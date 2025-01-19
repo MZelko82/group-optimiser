@@ -9,6 +9,10 @@ from pulp import *
 
 def get_box_weights(df, value_col, box_col, strain_col=None):
     """Calculate total value for each box."""
+    # Ensure value column is numeric
+    df = df.copy()
+    df[value_col] = pd.to_numeric(df[value_col], errors='coerce')
+    
     if strain_col:
         return df.groupby([strain_col, box_col])[value_col].sum().reset_index()
     return df.groupby([box_col])[value_col].sum().reset_index()
@@ -27,6 +31,9 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     Returns:
         Dictionary containing the optimal allocation and statistics
     """
+    # Convert values to float
+    values = {k: float(v) for k, v in values.items()}
+    
     # Create the model
     prob = LpProblem("GroupAllocation", LpMinimize)
     
@@ -88,8 +95,8 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     return {
         'groups': allocation,
         'group_weights': final_totals,
-        'variance': np.var(totals),
-        'max_difference': max(totals) - min(totals)
+        'variance': float(np.var(totals)),
+        'max_difference': float(max(totals) - min(totals))
     }
 
 def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: List[str], strain_col=None):
@@ -105,8 +112,8 @@ def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: Li
     
     for strain in strains:
         strain_boxes = box_weights[box_weights[strain_col] == strain]
-        boxes = strain_boxes[strain_boxes.columns[1]].tolist()  # box column is always second
-        values = strain_boxes[strain_boxes.columns[2]].tolist()  # value column is always third
+        boxes = strain_boxes[strain_boxes.columns[1]].astype(str).tolist()  # box column is always second
+        values = strain_boxes[strain_boxes.columns[2]].astype(float).tolist()  # value column is always third
         box_values = dict(zip(boxes, values))
         
         try:
