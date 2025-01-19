@@ -230,9 +230,10 @@ if uploaded_file is not None:
                     st.dataframe(output_df)
                     
                     # Create plots
+                    st.write("### Weight Distributions")
                     fig = plot_group_distributions(
-                        df, 
-                        results, 
+                        df=df, 
+                        results=results, 
                         value_col=value_column,
                         strain_col=strain_column
                     )
@@ -260,8 +261,9 @@ if uploaded_file is not None:
                         st.write(f"Maximum difference between groups: {results[strain]['max_difference']:.2f}")
                 
                 except Exception as e:
-                    st.error(f"Error processing file: {str(e)}")
-                    
+                    st.error(f"An error occurred: {str(e)}")
+                    st.write("Please check your data and try again.")
+                    raise e
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
 
