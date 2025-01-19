@@ -10,7 +10,7 @@ from pulp import *
 def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: str = None) -> pd.DataFrame:
     """
     Calculate box weights and subject counts.
-    Returns DataFrame with columns: box_number, strain, weight, subjects_per_box
+    Returns DataFrame with columns matching the input column names plus weight and subjects_per_box.
     """
     print(f"\nCalculating box weights:")
     print(f"Value column: {value_col}")
@@ -28,7 +28,6 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
     else:
         print("\nNo strain column specified, processing all data together")
         group_cols = [box_col]
-        # Add a dummy strain column
         df['strain'] = 'Group'
         strain_col = 'strain'
     
@@ -38,11 +37,24 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
         box_col: 'size'  # This gives us the count of subjects per box
     }).reset_index()
     
-    # Rename columns for clarity but keep original box column name
-    box_data.columns = [box_col, strain_col, 'weight', 'subjects_per_box']
+    # Create new column names, preserving the original box and strain column names
+    new_columns = []
+    for col in box_data.columns:
+        if col == box_col:
+            new_columns.append(box_col)  # Keep original box column name
+        elif col == strain_col:
+            new_columns.append(strain_col)  # Keep original strain column name
+        elif col == value_col:
+            new_columns.append('weight')  # Weight column
+        else:
+            new_columns.append('subjects_per_box')  # Count column
+    
+    # Rename columns
+    box_data.columns = new_columns
     
     print("\nBox weights data:")
     print(box_data)
+    print(f"Column names: {box_data.columns.tolist()}")
     
     return box_data
 
