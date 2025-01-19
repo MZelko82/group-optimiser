@@ -252,13 +252,10 @@ def main():
                             all_boxes = set(df[group_column].astype(str))
                             assigned_boxes = set()
                             
-                            for strain in strains:
-                                if strain not in results:
-                                    continue
-                                    
-                                strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
-                                for group, boxes in results[strain]['groups'].items():
+                            for strain, result in results.items():
+                                for group, boxes in result['groups'].items():
                                     box_strings = [str(b) for b in boxes]
+                                    strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
                                     mask = strain_mask & df[group_column].astype(str).isin(box_strings)
                                     output_df.loc[mask, 'Allocated_Group'] = group
                                     assigned_boxes.update(box_strings)
@@ -310,17 +307,15 @@ def main():
                         # Display statistics in a table
                         st.write("### Group Statistics")
                         stats_data = []
-                        for strain in strains:
-                            if strain not in results:
-                                continue
+                        for strain, result in results.items():
                             # Add group weights
-                            for group_name, total in results[strain]['group_weights'].items():
+                            for group_name, total in result['group_weights'].items():
                                 stats_data.append({
                                     'Strain': strain,
                                     'Group': group_name,
                                     'Total Weight': f"{total:.1f}",
-                                    'Variance': f"{results[strain]['variance']:.2f}",
-                                    'Max Difference': f"{results[strain]['max_difference']:.2f}"
+                                    'Variance': f"{result['variance']:.2f}",
+                                    'Max Difference': f"{result['max_difference']:.2f}"
                                 })
                         
                         stats_df = pd.DataFrame(stats_data)
