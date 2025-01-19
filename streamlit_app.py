@@ -30,6 +30,8 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
         strains = df[strain_col].unique()
     else:
         strains = ['Group']
+        df_plot['strain'] = 'Group'
+        strain_col = 'strain'
     
     # Create plot data
     plot_data = []
@@ -38,15 +40,16 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
     for strain in strains:
         if strain not in results:
             continue
+            
+        strain_mask = df_plot[strain_col] == strain
+        
         for group, boxes in results[strain]['groups'].items():
             # Convert boxes to strings for comparison
             box_strings = [str(b) for b in boxes]
-            mask = df_plot[value_col].index.isin(
-                df_plot[df_plot['Box'].astype(str).isin(box_strings)].index
-            )
+            mask = strain_mask & df_plot['Box'].astype(str).isin(box_strings)
             values = df_plot[value_col][mask]
             plot_data.extend(values)
-            plot_groups.extend([group] * len(values))
+            plot_groups.extend([f"{strain} - {group}" if strain != 'Group' else group] * len(values))
     
     plot_df = pd.DataFrame({
         'Weight': plot_data,
@@ -82,12 +85,13 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
                   label=group, s=50)
         
         # Add density plot
-        density = gaussian_kde(group_data['Weight'])
-        xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
-        ys = density(xs)
-        # Scale the density plot
-        ys = ys / ys.max() * 0.5  # Scale to half the distance between groups
-        ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
+        if len(group_data) > 1:  # Only add density plot if we have more than one point
+            density = gaussian_kde(group_data['Weight'])
+            xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
+            ys = density(xs)
+            # Scale the density plot
+            ys = ys / ys.max() * 0.5  # Scale to half the distance between groups
+            ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
     
     # Customize the plot
     ax.set_yticks(range(len(unique_groups)))

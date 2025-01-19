@@ -7,24 +7,43 @@ import itertools
 from typing import List, Dict, Any
 from pulp import *
 
-def get_box_weights(df, value_col, box_col, strain_col=None):
-    """Calculate total value for each box."""
-    # Ensure value column is numeric
+def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: str = None) -> pd.DataFrame:
+    """
+    Calculate box weights and subject counts.
+    Returns DataFrame with columns: box, strain, weight, subjects_per_box
+    """
+    print(f"\nCalculating box weights:")
+    print(f"Value column: {value_col}")
+    print(f"Box column: {box_col}")
+    print(f"Strain column: {strain_col}")
+    
+    # Convert box numbers to strings for consistent handling
     df = df.copy()
-    print(f"Input data types: {df.dtypes}")
-    print(f"Sample data:\n{df.head()}")
+    df[box_col] = df[box_col].astype(str)
     
-    df[value_col] = pd.to_numeric(df[value_col], errors='coerce')
-    print(f"After conversion:\n{df.head()}")
+    # Group by box and optionally strain
+    if strain_col:
+        print(f"\nProcessing by strain. Unique strains: {df[strain_col].unique()}")
+        group_cols = [box_col, strain_col]
+    else:
+        print("\nNo strain column specified, processing all data together")
+        group_cols = [box_col]
+        # Add a dummy strain column
+        df['strain'] = 'Group'
+        strain_col = 'strain'
     
-    # Get the number of subjects per box for allocation
-    box_counts = df.groupby(box_col).size().reset_index(name='subjects_per_box')
-    box_totals = df.groupby(box_col)[value_col].sum().reset_index()
+    # Calculate weights and counts
+    box_data = df.groupby(group_cols).agg({
+        value_col: 'sum',
+        box_col: 'size'  # This gives us the count of subjects per box
+    }).reset_index()
     
-    # Merge counts and totals
-    box_data = box_counts.merge(box_totals, on=box_col)
+    # Rename columns for clarity
+    box_data.columns = [box_col, strain_col, 'weight', 'subjects_per_box']
     
-    print(f"Box data:\n{box_data}")
+    print("\nBox weights data:")
+    print(box_data)
+    
     return box_data
 
 def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str], subjects_per_box: Dict[str, int]) -> Dict:
@@ -181,49 +200,49 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Results: {results}")
     return results
 
-def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: List[str], strain_col=None):
-    """Find the optimal allocation of boxes to minimize value difference between N groups using ILP."""
-    print(f"\nStarting allocation with {n_groups} groups: {group_names}")
-    print(f"Box weights:\n{box_weights}")
+def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None) -> Dict:
+    """
+    Find optimal allocation of boxes to n groups, optionally separated by strain.
+    Returns a dictionary with results for each strain.
+    """
+    print(f"\nFinding optimal allocation for {n_groups} groups")
+    print(f"Group names: {group_names}")
+    
+    if strain_col is None:
+        strain_col = 'strain'
+        box_weights['strain'] = 'Group'
     
     results = {}
     
-    if strain_col:
-        strains = box_weights[strain_col].unique()
-    else:
-        strains = ['Group']
-        strain_col = 'dummy'
-        box_weights['dummy'] = 'Group'
-    
-    print(f"Processing strains: {strains}")
-    
-    for strain in strains:
+    # Process each strain separately
+    for strain in box_weights[strain_col].unique():
         print(f"\nProcessing strain: {strain}")
-        strain_boxes = box_weights[box_weights[strain_col] == strain]
-        print(f"Strain boxes:\n{strain_boxes}")
         
-        # Get the column names for box and value columns
-        box_col = strain_boxes.columns[0]  # First column is box
-        value_col = strain_boxes.columns[2]  # Third column is total weight
+        # Get data for this strain
+        strain_data = box_weights[box_weights[strain_col] == strain]
+        if strain_data.empty:
+            print(f"No data found for strain {strain}")
+            continue
         
-        print(f"Box column: {box_col}, Value column: {value_col}")
+        # Extract values for optimization
+        boxes = strain_data['Box'].astype(str).tolist()
+        values = dict(zip(strain_data['Box'].astype(str), strain_data['weight']))
+        subjects_per_box = dict(zip(strain_data['Box'].astype(str), strain_data['subjects_per_box']))
         
-        # Convert boxes and values to dictionaries, preserving actual box numbers
-        boxes = strain_boxes[box_col].astype(str).tolist()
-        values = dict(zip(strain_boxes[box_col].astype(str), strain_boxes[value_col]))
-        subjects_per_box = dict(zip(strain_boxes[box_col].astype(str), strain_boxes['subjects_per_box']))
-        
-        print(f"Boxes: {boxes}")
+        print(f"Boxes for strain {strain}: {boxes}")
         print(f"Values: {values}")
         print(f"Subjects per box: {subjects_per_box}")
         
         try:
-            results[strain] = find_optimal_allocation_ilp(boxes, values, n_groups, group_names, subjects_per_box)
-            print(f"Allocation successful for strain {strain}")
-            print(f"Results: {results[strain]}")
+            # Find optimal allocation for this strain
+            strain_results = find_optimal_allocation_ilp(boxes, values, n_groups, group_names, subjects_per_box)
+            results[strain] = strain_results
         except Exception as e:
-            print(f"Error in allocation for strain {strain}: {str(e)}")
-            raise ValueError(f"Error optimizing allocation for {strain}: {str(e)}")
+            print(f"Error optimizing allocation for strain {strain}: {str(e)}")
+            raise ValueError(f"Strain '{strain}' optimization failed: {str(e)}")
+    
+    if not results:
+        raise ValueError("No valid results found for any strain")
     
     return results
 
