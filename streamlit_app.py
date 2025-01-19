@@ -85,90 +85,114 @@ if uploaded_file is not None:
         if st.button("Optimize Groups"):
             with st.spinner("Finding optimal allocation... This may take a moment for larger datasets."):
                 try:
-                    # Calculate box weights
-                    st.write("### Processing Data")
-                    st.write("1. Loading and preprocessing data...")
-                    box_weights = get_box_weights(
-                        df, 
-                        value_col=value_column,
-                        box_col=group_column,
-                        strain_col=strain_column
-                    )
+                    # Debug: Show input data
+                    st.write("### Input Data")
+                    st.write(f"DataFrame shape: {df.shape}")
+                    st.write("First few rows:")
+                    st.write(df.head())
+                    st.write(f"\nColumns: {df.columns.tolist()}")
                     
-                    st.write("Box weights calculated:")
-                    st.dataframe(box_weights)
+                    # Get box weights
+                    st.write("\n### Processing Box Weights")
+                    try:
+                        box_weights = get_box_weights(df, value_column, group_column, strain_column)
+                        st.write("Box weights data:")
+                        st.write(box_weights)
+                        
+                        if box_weights.empty:
+                            st.error("No box weights calculated!")
+                            st.stop()
+                    except Exception as e:
+                        st.error(f"Error calculating box weights: {str(e)}")
+                        st.stop()
                     
-                    # Find optimal allocation
-                    st.write("2. Finding optimal allocation...")
-                    st.write("Constraints:")
-                    total_subjects = len(df)
-                    subjects_per_group = total_subjects // n_groups
-                    remainder = total_subjects % n_groups
-                    st.write(f"- Total subjects: {total_subjects}")
-                    st.write(f"- Target subjects per group: {subjects_per_group} (±{1 if remainder > 0 else 0})")
-                    st.write(f"- Boxes must stay together")
-                    st.write(f"- Minimizing weight difference between groups")
-                    
-                    results = find_optimal_allocation_n_groups(
-                        box_weights,
-                        n_groups=n_groups,
-                        group_names=group_names,
-                        strain_col=strain_column
-                    )
+                    # Run optimization
+                    st.write("\n### Running Optimization")
+                    try:
+                        results = find_optimal_allocation_n_groups(box_weights, n_groups, group_names, strain_column)
+                        st.write("Optimization results:")
+                        st.write(results)
+                        
+                        if not results:
+                            st.error("No results returned from optimization")
+                            st.stop()
+                    except Exception as e:
+                        st.error(f"Optimization failed: {str(e)}")
+                        st.write("Debug information:")
+                        st.write("Box weights:")
+                        st.write(box_weights)
+                        st.stop()
                     
                     # Create output DataFrame
-                    st.write("3. Creating output...")
+                    st.write("\n### Creating Output")
                     output_df = df.copy()
+                    output_df['Allocated_Group'] = None
                     
-                    # Prepare data for plotting
-                    df_plot = df.copy()
-                    df_plot['Rat Box'] = df_plot[group_column]
-                    
+                    # Process each strain
                     if strain_column:
                         strains = df[strain_column].unique()
                     else:
                         strains = ['Group']
                     
-                    st.write(f"Processing {len(strains)} strain(s): {strains}")
-                        
-                    # Assign groups in output DataFrame
+                    st.write(f"\nProcessing {len(strains)} strain(s): {strains}")
+                    
+                    # Track assignments for verification
+                    assigned_boxes = set()
+                    
                     for strain in strains:
-                        st.write(f"Assigning groups for strain: {strain}")
-                        for group_name, boxes in results[strain]['groups'].items():
-                            st.write(f"- {group_name}: {len(boxes)} boxes")
-                            mask = df_plot[group_column].isin(boxes)
+                        st.write(f"\nProcessing strain: {strain}")
+                        if strain not in results:
+                            st.error(f"No results found for strain: {strain}")
+                            continue
+                        
+                        strain_results = results[strain]
+                        st.write(f"Results for strain {strain}:")
+                        st.write(strain_results)
+                        
+                        for group_name, boxes in strain_results['groups'].items():
+                            st.write(f"\nAssigning group {group_name}")
+                            st.write(f"Boxes to assign: {boxes}")
+                            
+                            # Track these boxes
+                            assigned_boxes.update(boxes)
+                            
+                            # Create mask using exact box numbers
+                            mask = output_df[group_column].astype(str).isin([str(b) for b in boxes])
                             if strain_column:
-                                mask &= (df_plot[strain_column] == strain)
+                                mask &= (output_df[strain_column] == strain)
+                            
+                            # Debug: Show matching
+                            st.write(f"Matching rows found: {mask.sum()}")
+                            if mask.sum() == 0:
+                                st.write("Box values in data:")
+                                st.write(sorted(output_df[group_column].astype(str).unique()))
+                                st.write("Looking for boxes:")
+                                st.write(sorted([str(b) for b in boxes]))
+                            
+                            # Assign group
                             output_df.loc[mask, 'Allocated_Group'] = group_name
                     
-                    # Verify all rows have been assigned
-                    unassigned = output_df[output_df['Allocated_Group'].isna()]
-                    if len(unassigned) > 0:
-                        st.error("Error: Some items were not assigned to groups.")
-                        st.write("### Unassigned Items")
-                        st.dataframe(unassigned)
-                        st.write("### Debug Information")
-                        st.write("Please check that:")
-                        st.write("1. All items have valid numeric values")
-                        st.write(f"Current value column: {value_column}")
-                        st.write(f"Value types: {df[value_column].dtype}")
-                        st.write(f"Sample values: {df[value_column].head()}")
-                        st.write("2. The number of items is divisible by the number of groups")
-                        total_subjects = len(df)
-                        st.write(f"Total subjects: {total_subjects}")
-                        st.write(f"Number of groups: {n_groups}")
-                        st.write(f"Subjects per group: {total_subjects // n_groups}")
-                        st.write(f"Remainder: {total_subjects % n_groups}")
-                        st.write("Box summary:")
-                        box_summary = df.groupby(group_column).agg({
-                            value_column: ['count', 'sum', 'mean'],
-                        }).reset_index()
-                        box_summary.columns = [group_column, 'Subjects', 'Total Weight', 'Mean Weight']
-                        st.dataframe(box_summary)
+                    # Verify assignments
+                    st.write("\n### Verification")
+                    st.write("Group assignments:")
+                    st.write(output_df['Allocated_Group'].value_counts())
+                    
+                    # Check for unassigned boxes
+                    all_boxes = set(output_df[group_column].astype(str).unique())
+                    unassigned_boxes = all_boxes - assigned_boxes
+                    if unassigned_boxes:
+                        st.error(f"Found {len(unassigned_boxes)} unassigned boxes: {sorted(unassigned_boxes)}")
+                        st.write("\nDebug Information")
+                        st.write("1. All boxes in data:", sorted(all_boxes))
+                        st.write("2. Assigned boxes:", sorted(assigned_boxes))
+                        st.write("3. Box weights data:")
+                        st.write(box_weights)
+                        st.write("4. Results:")
+                        st.write(results)
                         st.stop()
                     
                     # Display results
-                    st.write("### Results")
+                    st.write("### Final Results")
                     st.write("The optimizer has found the mathematically optimal allocation that minimizes weight differences between groups while keeping subjects in the same box together.")
                     
                     # Show group summary
@@ -186,7 +210,7 @@ if uploaded_file is not None:
                     
                     # Create plots
                     fig = plot_group_distributions(
-                        df_plot, 
+                        df, 
                         results, 
                         value_col=value_column,
                         strain_col=strain_column

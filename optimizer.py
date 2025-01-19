@@ -19,20 +19,13 @@ def get_box_weights(df, value_col, box_col, strain_col=None):
     
     # Get the number of subjects per box for allocation
     box_counts = df.groupby(box_col).size().reset_index(name='subjects_per_box')
-    print(f"Subjects per box:\n{box_counts}")
+    box_totals = df.groupby(box_col)[value_col].sum().reset_index()
     
-    # Calculate total weight per box (we'll use this for balancing)
-    if strain_col:
-        box_totals = df.groupby([strain_col, box_col])[value_col].sum().reset_index()
-        # Add the count information
-        box_totals = box_totals.merge(box_counts, on=box_col)
-    else:
-        box_totals = df.groupby(box_col)[value_col].sum().reset_index()
-        # Add the count information
-        box_totals = box_totals.merge(box_counts, on=box_col)
+    # Merge counts and totals
+    box_data = box_counts.merge(box_totals, on=box_col)
     
-    print(f"Box totals with subject counts:\n{box_totals}")
-    return box_totals
+    print(f"Box data:\n{box_data}")
+    return box_data
 
 def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str], subjects_per_box: Dict[str, int]) -> Dict:
     """
@@ -41,18 +34,29 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     1. First find a feasible solution that balances subject counts
     2. Then optimize weights while maintaining subject balance
     """
-    print(f"\nStarting ILP optimization")
-    print(f"Number of boxes: {len(boxes)}")
-    print(f"Number of groups: {n_groups}")
-    print(f"Group names: {group_names}")
+    print("\n=== Starting ILP Optimization ===")
+    print(f"Input data:")
+    print(f"- Boxes: {boxes}")
+    print(f"- Values: {values}")
+    print(f"- Subjects per box: {subjects_per_box}")
+    print(f"- Number of groups: {n_groups}")
+    print(f"- Group names: {group_names}")
+    
+    # Validate input data
+    if not boxes or not values or not subjects_per_box:
+        raise ValueError("Empty input data")
+    if len(boxes) != len(values) or len(boxes) != len(subjects_per_box):
+        raise ValueError(f"Mismatched input lengths: boxes={len(boxes)}, values={len(values)}, subjects={len(subjects_per_box)}")
     
     # Convert values to float, ensuring we only convert the numeric values
     values = {str(k): float(v) for k, v in values.items()}
     boxes = [str(box) for box in boxes]  # Ensure all boxes are strings
+    subjects_per_box = {str(k): int(v) for k, v in subjects_per_box.items()}
     
     # Step 1: Find a feasible solution balancing subjects
     prob = LpProblem("GroupAllocation_Step1", LpMinimize)
     
+    print("\nCreating decision variables...")
     # Decision variables: x[i,j] = 1 if box i is assigned to group j
     x = LpVariable.dicts("assign",
                         ((box, group) for box in boxes for group in group_names),
@@ -62,6 +66,7 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     max_subjects = LpVariable("max_subjects", lowBound=0)
     min_subjects = LpVariable("min_subjects", lowBound=0)
     
+    print("\nSetting up objective and constraints...")
     # Objective: Minimize the difference in subject counts
     prob += max_subjects - min_subjects
     
@@ -69,30 +74,38 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     # 1. Each box must be assigned to exactly one group
     for box in boxes:
         prob += lpSum(x[box, group] for group in group_names) == 1
+        # Debug: print constraint
+        print(f"Box {box} assignment sum: {lpSum(x[box, group] for group in group_names)} = 1")
     
     # 2. Track min and max subjects per group
     total_subjects = sum(subjects_per_box.values())
     subjects_per_group = total_subjects // n_groups
     remainder = total_subjects % n_groups
     
-    print(f"Total subjects: {total_subjects}")
-    print(f"Target subjects per group: {subjects_per_group}")
-    print(f"Remainder: {remainder}")
+    print(f"\nSubject distribution:")
+    print(f"- Total subjects: {total_subjects}")
+    print(f"- Target per group: {subjects_per_group}")
+    print(f"- Remainder: {remainder}")
     
     # Allow more flexibility in group sizes
     min_allowed = subjects_per_group - 2
     max_allowed = subjects_per_group + 2
     
-    print(f"Allowed group size range: {min_allowed} to {max_allowed} subjects")
+    print(f"Allowed group size range: {min_allowed} to {max_allowed}")
     
+    # Track subjects per group
+    group_subject_counts = {}
     for group in group_names:
         group_subjects = lpSum(subjects_per_box[box] * x[box, group] for box in boxes)
+        group_subject_counts[group] = group_subjects
         # Track min/max
         prob += group_subjects <= max_subjects
         prob += group_subjects >= min_subjects
         # Keep within allowed range
         prob += group_subjects >= min_allowed
         prob += group_subjects <= max_allowed
+        # Debug: print constraints
+        print(f"Group {group} subjects: {min_allowed} <= {group_subjects} <= {max_allowed}")
     
     # Solve step 1
     print("\nSolving step 1: Subject balance...")
@@ -100,6 +113,7 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Step 1 status: {LpStatus[prob.status]}")
     
     if LpStatus[prob.status] != 'Optimal':
+        print("\nStep 1 failed to find optimal solution")
         # Get debug information
         group_info = {}
         for group in group_names:
@@ -111,82 +125,49 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
                 'box_sizes': {box: subjects_per_box[box] for box in assigned_boxes}
             }
         
-        raise ValueError(f"Could not find feasible subject balance. Status: {LpStatus[prob.status]}\n"
-                        f"Debug info:\n"
-                        f"Group info: {group_info}\n"
-                        f"Total subjects: {total_subjects}\n"
-                        f"Allowed range: {min_allowed} to {max_allowed} subjects per group\n"
-                        f"Box sizes: {subjects_per_box}")
+        print("\nDebug information:")
+        print(f"Group info: {group_info}")
+        raise ValueError(f"Could not find feasible subject balance. Status: {LpStatus[prob.status]}")
     
-    # Get the subject counts from step 1
-    group_subjects = {group: sum(subjects_per_box[box] * value(x[box, group]) for box in boxes)
-                     for group in group_names}
-    
-    # Step 2: Optimize weights while maintaining subject balance
-    prob2 = LpProblem("GroupAllocation_Step2", LpMinimize)
-    
-    # New decision variables
-    y = LpVariable.dicts("assign2",
-                        ((box, group) for box in boxes for group in group_names),
-                        cat='Binary')
-    
-    # Variables for tracking weight differences
-    max_weight = LpVariable("max_weight")
-    min_weight = LpVariable("min_weight")
-    
-    # Objective: Minimize weight difference
-    prob2 += max_weight - min_weight
-    
-    # Constraints from step 1
-    for box in boxes:
-        prob2 += lpSum(y[box, group] for group in group_names) == 1
-    
-    # Maintain subject balance from step 1
-    for group in group_names:
-        # Allow small deviation from step 1 result
-        subjects = lpSum(subjects_per_box[box] * y[box, group] for box in boxes)
-        prob2 += subjects >= group_subjects[group] - 1
-        prob2 += subjects <= group_subjects[group] + 1
-        
-        # Track weights
-        weight = lpSum(values[box] * y[box, group] for box in boxes)
-        prob2 += weight <= max_weight
-        prob2 += weight >= min_weight
-    
-    # Solve step 2
-    print("\nSolving step 2: Weight balance...")
-    status2 = prob2.solve(PULP_CBC_CMD(msg=False))
-    print(f"Step 2 status: {LpStatus[prob2.status]}")
-    
-    if LpStatus[prob2.status] != 'Optimal':
-        # Use the solution from step 1 if step 2 fails
-        print("Warning: Using subject-balanced solution as weight optimization failed")
-        y = x
-    
-    # Extract final results
+    # Extract results directly from step 1
+    print("\nExtracting results from step 1...")
     allocation = {group: [] for group in group_names}
     final_totals = {group: 0 for group in group_names}
     final_subjects = {group: 0 for group in group_names}
     
     for box in boxes:
-        best_group = max(group_names, key=lambda g: value(y[box, g]))
-        allocation[best_group].append(box)
-        final_totals[best_group] += values[box]
-        final_subjects[best_group] += subjects_per_box[box]
+        # Find which group this box is assigned to
+        for group in group_names:
+            if value(x[box, group]) > 0.5:  # Box is assigned to this group
+                allocation[group].append(box)
+                final_totals[group] += values[box]
+                final_subjects[group] += subjects_per_box[box]
+                print(f"Assigned box {box} to group {group}")
+                break
     
     print("\nFinal allocation:")
     for group, boxes in allocation.items():
         print(f"{group}: {boxes} ({final_subjects[group]} subjects, Total weight: {final_totals[group]})")
     
+    # Verify all boxes are assigned
+    assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
+    if len(assigned_boxes) != len(boxes):
+        missing_boxes = set(boxes) - assigned_boxes
+        raise ValueError(f"Not all boxes were assigned! Missing: {missing_boxes}")
+    
     # Calculate statistics
     totals = list(final_totals.values())
-    return {
+    results = {
         'groups': allocation,
         'group_weights': final_totals,
         'group_subjects': final_subjects,
         'variance': float(np.var(totals)),
         'max_difference': float(max(totals) - min(totals))
     }
+    
+    print("\nOptimization complete!")
+    print(f"Results: {results}")
+    return results
 
 def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: List[str], strain_col=None):
     """Find the optimal allocation of boxes to minimize value difference between N groups using ILP."""
@@ -210,24 +191,22 @@ def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: Li
         print(f"Strain boxes:\n{strain_boxes}")
         
         # Get the column names for box and value columns
-        box_col = strain_boxes.columns[1]  # box column is always second
-        value_col = strain_boxes.columns[2]  # value column is always third
+        box_col = strain_boxes.columns[0]  # First column is box
+        value_col = strain_boxes.columns[2]  # Third column is total weight
         
         print(f"Box column: {box_col}, Value column: {value_col}")
         
-        # Convert boxes to strings and ensure values are numeric
+        # Convert boxes and values to dictionaries, preserving actual box numbers
         boxes = strain_boxes[box_col].astype(str).tolist()
-        values = pd.to_numeric(strain_boxes[value_col], errors='coerce').fillna(0).tolist()
-        box_values = dict(zip(boxes, values))
-        subjects_per_box = dict(zip(boxes, strain_boxes['subjects_per_box'].tolist()))
+        values = dict(zip(strain_boxes[box_col].astype(str), strain_boxes[value_col]))
+        subjects_per_box = dict(zip(strain_boxes[box_col].astype(str), strain_boxes['subjects_per_box']))
         
         print(f"Boxes: {boxes}")
         print(f"Values: {values}")
-        print(f"Box-value mapping: {box_values}")
         print(f"Subjects per box: {subjects_per_box}")
         
         try:
-            results[strain] = find_optimal_allocation_ilp(boxes, box_values, n_groups, group_names, subjects_per_box)
+            results[strain] = find_optimal_allocation_ilp(boxes, values, n_groups, group_names, subjects_per_box)
             print(f"Allocation successful for strain {strain}")
             print(f"Results: {results[strain]}")
         except Exception as e:
