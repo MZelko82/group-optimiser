@@ -1,10 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
+from optimizer import find_optimal_allocation_n_groups, get_box_weights
 import matplotlib.pyplot as plt
-from io import BytesIO
-from optimizer import find_optimal_allocation_n_groups, get_box_weights, plot_group_distributions
+import seaborn as sns
+
+# Set style for plots
+plt.style.use('seaborn')
+sns.set_palette("husl")
 
 st.set_page_config(page_title="Group Optimizer", layout="wide")
 
@@ -262,3 +265,62 @@ if uploaded_file is not None:
                     
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
+
+
+def plot_group_distributions(df, results, value_col, strain_col=None):
+    """Create distribution plots for the groups."""
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Get group assignments
+    df_plot = df.copy()
+    
+    # Process each strain
+    if strain_col:
+        strains = df[strain_col].unique()
+    else:
+        strains = ['Group']
+    
+    # Create a color palette for the groups
+    all_groups = set()
+    for strain in strains:
+        if strain in results:
+            all_groups.update(results[strain]['groups'].keys())
+    n_groups = len(all_groups)
+    colors = sns.color_palette("husl", n_groups)
+    color_map = dict(zip(all_groups, colors))
+    
+    # Plot 1: Box plot
+    plot_data = []
+    plot_groups = []
+    
+    for strain in strains:
+        if strain not in results:
+            continue
+        for group, boxes in results[strain]['groups'].items():
+            # Convert boxes to strings for comparison
+            box_strings = [str(b) for b in boxes]
+            mask = df_plot[value_col].index.isin(
+                df_plot[df_plot['Box'].astype(str).isin(box_strings)].index
+            )
+            values = df_plot[value_col][mask]
+            plot_data.extend(values)
+            plot_groups.extend([group] * len(values))
+    
+    plot_df = pd.DataFrame({
+        'Weight': plot_data,
+        'Group': plot_groups
+    })
+    
+    sns.boxplot(data=plot_df, x='Group', y='Weight', ax=axes[0], palette=color_map)
+    axes[0].set_title('Weight Distribution by Group')
+    axes[0].set_xlabel('Group')
+    axes[0].set_ylabel('Weight')
+    
+    # Plot 2: Violin plot
+    sns.violinplot(data=plot_df, x='Group', y='Weight', ax=axes[1], palette=color_map)
+    axes[1].set_title('Weight Distribution by Group (Violin)')
+    axes[1].set_xlabel('Group')
+    axes[1].set_ylabel('Weight')
+    
+    plt.tight_layout()
+    return fig
