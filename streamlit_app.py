@@ -37,7 +37,7 @@ def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
         fig.patch.set_alpha(0.0)
         
         # Helper function to create a single distribution plot
-        def create_distribution_plot(ax, plot_df, color_map, title):
+        def create_distribution_plot(fig, ax, plot_df, color_map, title):
             if plot_df.empty:
                 ax.text(0.5, 0.5, 'No data available', 
                        horizontalalignment='center',
@@ -125,7 +125,7 @@ def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
         # Create overall plot
         ax_overall = fig.add_subplot(n_strains + 1, 1, 1)
         ax_overall.set_facecolor('none')
-        create_distribution_plot(ax_overall, all_plot_df, color_map, 'Overall Weight Distribution by Group')
+        create_distribution_plot(fig, ax_overall, all_plot_df, color_map, 'Overall Weight Distribution by Group')
         
         # Create individual strain plots if we have multiple strains
         if n_strains > 1:
@@ -153,7 +153,7 @@ def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
                 # Create strain-specific plot
                 ax_strain = fig.add_subplot(n_strains + 1, 1, i)
                 ax_strain.set_facecolor('none')
-                create_distribution_plot(ax_strain, strain_plot_df, color_map, f'Weight Distribution for {strain}')
+                create_distribution_plot(fig, ax_strain, strain_plot_df, color_map, f'Weight Distribution for {strain}')
         
         plt.tight_layout()
         return fig
@@ -394,14 +394,9 @@ def main():
                         
                         # Create plots
                         st.write("### Weight Distributions")
-                        fig = plot_group_distributions(
-                            df=df, 
-                            results=results, 
-                            value_col=value_column,
-                            box_col=group_column,
-                            strain_col=strain_column
-                        )
-                        st.pyplot(fig)
+                        fig = plot_group_distributions(df, results, value_column, group_column, strain_column)
+                        if fig is not None:
+                            st.pyplot(fig)
                         
                         # Provide download link
                         output = BytesIO()
