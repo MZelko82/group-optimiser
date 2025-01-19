@@ -100,6 +100,15 @@ if uploaded_file is not None:
                     
                     # Find optimal allocation
                     st.write("2. Finding optimal allocation...")
+                    st.write("Constraints:")
+                    total_subjects = len(df)
+                    subjects_per_group = total_subjects // n_groups
+                    remainder = total_subjects % n_groups
+                    st.write(f"- Total subjects: {total_subjects}")
+                    st.write(f"- Target subjects per group: {subjects_per_group} (±{1 if remainder > 0 else 0})")
+                    st.write(f"- Boxes must stay together")
+                    st.write(f"- Minimizing weight difference between groups")
+                    
                     results = find_optimal_allocation_n_groups(
                         box_weights,
                         n_groups=n_groups,

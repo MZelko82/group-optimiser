@@ -81,11 +81,19 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Subjects per group: {subjects_per_group}")
     print(f"Remainder: {remainder}")
     
-    for i, group in enumerate(group_names):
-        # Add one extra subject to early groups if there's a remainder
-        target_size = subjects_per_group + (1 if i < remainder else 0)
-        print(f"Target size for {group}: {target_size} subjects")
-        prob += lpSum(subjects_per_box[box] * x[box, group] for box in boxes) == target_size
+    # Calculate min and max subjects per group
+    min_subjects = subjects_per_group
+    max_subjects = subjects_per_group + (1 if remainder > 0 else 0)
+    
+    print(f"Min subjects per group: {min_subjects}")
+    print(f"Max subjects per group: {max_subjects}")
+    
+    # Allow some flexibility in group sizes to ensure feasibility
+    for group in group_names:
+        group_subjects = lpSum(subjects_per_box[box] * x[box, group] for box in boxes)
+        # Groups must be within ±1 of target size
+        prob += group_subjects >= min_subjects
+        prob += group_subjects <= max_subjects
     
     # 3. Track max and min group totals (for weights)
     group_totals = {}
@@ -101,7 +109,22 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Solution status: {LpStatus[prob.status]}")
     
     if LpStatus[prob.status] != 'Optimal':
-        raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}")
+        # Get more detailed debug information
+        group_constraints = {}
+        for group in group_names:
+            group_subjects = sum(subjects_per_box[box] for box in boxes if value(x[box, group]) > 0.5)
+            group_constraints[group] = {
+                'subjects': group_subjects,
+                'min_required': min_subjects,
+                'max_allowed': max_subjects,
+                'boxes': [box for box in boxes if value(x[box, group]) > 0.5]
+            }
+        
+        raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}\n"
+                        f"Debug info:\n"
+                        f"Group constraints: {group_constraints}\n"
+                        f"Total subjects: {total_subjects}\n"
+                        f"Target per group: {subjects_per_group} (±{1 if remainder > 0 else 0})")
     
     # Extract results
     allocation = {group: [] for group in group_names}
