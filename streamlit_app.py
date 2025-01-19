@@ -5,9 +5,8 @@ from optimizer import find_optimal_allocation_n_groups, get_box_weights
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Set style for plots
-plt.style.use('seaborn')
-sns.set_palette("husl")
+# Configure seaborn defaults
+sns.set_theme(style="whitegrid")
 
 st.set_page_config(page_title="Group Optimizer", layout="wide")
 
