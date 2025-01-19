@@ -312,19 +312,22 @@ def main():
                         # Display statistics
                         st.write("### Group Statistics")
                         for strain in strains:
+                            if strain not in results:
+                                continue
                             st.write(f"\n**{strain}**")
                             st.write("Group totals:")
                             for group_name, total in results[strain]['group_weights'].items():
                                 st.write(f"- {group_name}: {total:.1f}")
                             st.write(f"Variance between groups: {results[strain]['variance']:.2f}")
                             st.write(f"Maximum difference between groups: {results[strain]['max_difference']:.2f}")
-                
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
-                    st.write("Please check your data and try again.")
-                    raise e
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
+                    
+                    except Exception as e:
+                        st.error(f"An error occurred: {str(e)}")
+                        st.write("Please check your data and try again.")
+                        raise e
+        
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
 
 if __name__ == "__main__":
     main()
