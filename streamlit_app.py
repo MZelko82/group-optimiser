@@ -11,56 +11,85 @@ from scipy.stats import gaussian_kde
 sns.set_theme(style="whitegrid")
 
 def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
-    """Create distribution plots for the groups."""
+    """Create distribution plots for the groups, with separate views for overall and by strain."""
     # Set up colors - alternating between first and last from each palette
     palette1 = ['#89A8B2', '#F1F0E8']  # First palette
     palette2 = ['#F0A8D0', '#FFEBD4']  # Second palette
     
-    # Create a figure with transparent background
-    plt.style.use('dark_background')
-    fig = plt.figure(figsize=(12, 8), facecolor='none')
-    ax = fig.add_subplot(111)
-    ax.set_facecolor('none')
-    
-    # Get group assignments
-    df_plot = df.copy()
-    
-    # Process each strain
-    if strain_col:
+    # Get strains
+    if strain_col and strain_col in df.columns:
         strains = df[strain_col].unique()
+        n_strains = len(strains)
     else:
         strains = ['Group']
-        df_plot['strain'] = 'Group'
+        n_strains = 1
+        df = df.copy()
+        df['strain'] = 'Group'
         strain_col = 'strain'
     
-    # Create plot data
-    plot_data = []
-    plot_groups = []
+    # Create figure with subplots - one for overall, one for each strain
+    plt.style.use('dark_background')
+    fig = plt.figure(figsize=(12, 6 * (n_strains + 1)), facecolor='none')
     
+    # Helper function to create a single distribution plot
+    def create_distribution_plot(ax, plot_df, color_map, title):
+        unique_groups = plot_df['Group'].unique()
+        
+        # Plot scatter points and densities
+        for i, (group, group_data) in enumerate(plot_df.groupby('Group')):
+            # Add jitter to y position
+            y_jitter = np.random.normal(i, 0.1, size=len(group_data))
+            ax.scatter(group_data['Weight'], y_jitter, 
+                      alpha=0.5, color=color_map[group], 
+                      label=group, s=50)
+            
+            # Add density plot if we have enough points
+            if len(group_data) > 1:
+                density = gaussian_kde(group_data['Weight'])
+                xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
+                ys = density(xs)
+                ys = ys / ys.max() * 0.5
+                ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
+        
+        # Customize the plot
+        ax.set_yticks(range(len(unique_groups)))
+        ax.set_yticklabels(unique_groups, color='white', fontsize=10)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('white')
+        ax.spines['bottom'].set_color('white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        ax.set_title(title, color='white', pad=20, fontsize=12)
+        ax.set_xlabel('Weight', color='white', fontsize=10)
+        ax.grid(True, alpha=0.1, color='white')
+    
+    # Create plot data for all groups
+    all_plot_data = []
+    all_plot_groups = []
+    
+    # Process all data for the overall plot
     for strain in strains:
         if strain not in results:
             continue
             
-        strain_mask = df_plot[strain_col] == strain
-        
+        strain_mask = df[strain_col] == strain
         for group, boxes in results[strain]['groups'].items():
-            # Convert boxes to strings for comparison
             box_strings = [str(b) for b in boxes]
-            mask = strain_mask & df_plot[box_col].astype(str).isin(box_strings)
-            values = df_plot[value_col][mask]
-            plot_data.extend(values)
-            plot_groups.extend([f"{strain} - {group}" if strain != 'Group' else group] * len(values))
+            mask = strain_mask & df[box_col].astype(str).isin(box_strings)
+            values = df[value_col][mask]
+            group_name = group if n_strains == 1 else f"{strain} - {group}"
+            all_plot_data.extend(values)
+            all_plot_groups.extend([group_name] * len(values))
     
-    plot_df = pd.DataFrame({
-        'Weight': plot_data,
-        'Group': plot_groups
+    all_plot_df = pd.DataFrame({
+        'Weight': all_plot_data,
+        'Group': all_plot_groups
     })
     
-    # Get unique groups and assign colors
-    unique_groups = plot_df['Group'].unique()
+    # Create color map for all groups
+    unique_groups = all_plot_df['Group'].unique()
     n_groups = len(unique_groups)
-    
-    # Create color list by alternating between first and last colors
     colors = []
     for i in range(n_groups):
         if i < len(palette1) // 2:
@@ -70,47 +99,41 @@ def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
             if idx < len(palette2):
                 colors.append(palette2[idx])
             else:
-                # If we run out of colors, start over
                 colors.append(colors[i % len(colors)])
-    
-    # Create color map
     color_map = dict(zip(unique_groups, colors))
     
-    # Plot scatter points
-    for i, (group, group_data) in enumerate(plot_df.groupby('Group')):
-        # Add jitter to y position
-        y_jitter = np.random.normal(i, 0.1, size=len(group_data))
-        ax.scatter(group_data['Weight'], y_jitter, 
-                  alpha=0.5, color=color_map[group], 
-                  label=group, s=50)
-        
-        # Add density plot
-        if len(group_data) > 1:  # Only add density plot if we have more than one point
-            density = gaussian_kde(group_data['Weight'])
-            xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
-            ys = density(xs)
-            # Scale the density plot
-            ys = ys / ys.max() * 0.5  # Scale to half the distance between groups
-            ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
+    # Create overall plot
+    ax_overall = fig.add_subplot(n_strains + 1, 1, 1)
+    ax_overall.set_facecolor('none')
+    create_distribution_plot(ax_overall, all_plot_df, color_map, 'Overall Weight Distribution by Group')
     
-    # Customize the plot
-    ax.set_yticks(range(len(unique_groups)))
-    ax.set_yticklabels(unique_groups, color='white', fontsize=10)
-    
-    # Style the plot
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('white')
-    ax.spines['bottom'].set_color('white')
-    
-    ax.tick_params(axis='x', colors='white')
-    ax.tick_params(axis='y', colors='white')
-    
-    ax.set_title('Weight Distribution by Group', color='white', pad=20, fontsize=12)
-    ax.set_xlabel('Weight', color='white', fontsize=10)
-    
-    # Add grid with low opacity
-    ax.grid(True, alpha=0.1, color='white')
+    # Create individual strain plots if we have multiple strains
+    if n_strains > 1:
+        for i, strain in enumerate(strains, start=2):
+            if strain not in results:
+                continue
+                
+            # Create strain-specific plot data
+            strain_plot_data = []
+            strain_plot_groups = []
+            
+            strain_mask = df[strain_col] == strain
+            for group, boxes in results[strain]['groups'].items():
+                box_strings = [str(b) for b in boxes]
+                mask = strain_mask & df[box_col].astype(str).isin(box_strings)
+                values = df[value_col][mask]
+                strain_plot_data.extend(values)
+                strain_plot_groups.extend([group] * len(values))
+            
+            strain_plot_df = pd.DataFrame({
+                'Weight': strain_plot_data,
+                'Group': strain_plot_groups
+            })
+            
+            # Create strain-specific plot
+            ax_strain = fig.add_subplot(n_strains + 1, 1, i)
+            ax_strain.set_facecolor('none')
+            create_distribution_plot(ax_strain, strain_plot_df, color_map, f'Weight Distribution for {strain}')
     
     plt.tight_layout()
     return fig
@@ -273,11 +296,14 @@ def main():
                                 # Track these boxes
                                 assigned_boxes.update(str(b) for b in boxes)
                                 
-                                # Create mask using exact box numbers
+                                # Create mask using exact box numbers and strain
                                 box_strings = [str(b) for b in boxes]
                                 mask = output_df[group_column].astype(str).isin(box_strings)
                                 if strain_column:
                                     mask &= (output_df[strain_column] == strain)
+                                
+                                # Assign group using the mask
+                                output_df.loc[mask, 'Allocated_Group'] = group_name
                                 
                                 # Debug: Show matching
                                 st.write(f"Matching rows found: {mask.sum()}")
@@ -292,9 +318,6 @@ def main():
                                     st.write(f"Data box type: {type(data_boxes[0])}")
                                     st.write(f"Assignment box type: {type(box_strings[0])}")
                                 
-                                # Assign group
-                                output_df.loc[mask, 'Allocated_Group'] = group_name
-                        
                         # Verify assignments
                         st.write("\n### Verification")
                         st.write("Group assignments:")
