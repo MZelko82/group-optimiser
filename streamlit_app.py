@@ -291,13 +291,22 @@ def main():
                     st.write("### Group Statistics")
                     stats_data = []
                     for strain, result in st.session_state.results.items():
-                        # Add group weights
+                        # Calculate standard deviation per group after allocation
+                        group_stdevs = {}
+                        for group_name in result['group_weights'].keys():
+                            group_mask = (st.session_state.output_df['Allocated_Group'] == group_name)
+                            if strain_column:
+                                group_mask &= (st.session_state.output_df[strain_column] == strain)
+                            group_values = st.session_state.output_df.loc[group_mask, value_column]
+                            group_stdevs[group_name] = float(np.std(group_values, ddof=1)) if len(group_values) > 1 else 0.0
+                        
+                        # Add group weights and calculated stats
                         for group_name, total in result['group_weights'].items():
                             stats_data.append({
                                 'Strain': strain,
                                 'Group': group_name,
                                 'Total Weight': f"{total:.1f}",
-                                'Std Dev': f"{result['std_dev']:.2f}",  # Standard deviation within strain
+                                'Std Dev': f"{group_stdevs[group_name]:.2f}",  # Per-group standard deviation
                                 'Max Difference': f"{result['max_difference']:.2f}"
                             })
                     
@@ -308,8 +317,9 @@ def main():
                     st.write("### Weight Distributions")
                     fig = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
                     if fig is not None:
-                        # Make figure 20% smaller
-                        fig.set_size_inches(fig.get_size_inches() * 0.8)
+                        # Make figure 40% smaller (20% reduction in both dimensions)
+                        current_size = fig.get_size_inches()
+                        fig.set_size_inches(current_size[0] * 0.6, current_size[1] * 0.6)
                         st.pyplot(fig)
                     
                     # Create a separate container for the download button
