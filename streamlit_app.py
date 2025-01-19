@@ -231,8 +231,8 @@ def main():
                                 # Calculate box weights for this strain
                                 strain_box_weights = get_box_weights(
                                     df=strain_df,
-                                    value_column=value_column,
-                                    box_column=group_column
+                                    value_col=value_column,
+                                    box_col=group_column
                                 )
                                 
                                 results[strain] = find_optimal_allocation_n_groups(
