@@ -24,6 +24,7 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
     
     # Get group assignments
     df_plot = df.copy()
+    box_col = 'box_number'  # Updated column name in the input data
     
     # Process each strain
     if strain_col:
@@ -46,7 +47,7 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
         for group, boxes in results[strain]['groups'].items():
             # Convert boxes to strings for comparison
             box_strings = [str(b) for b in boxes]
-            mask = strain_mask & df_plot['Box'].astype(str).isin(box_strings)
+            mask = strain_mask & df_plot[box_col].astype(str).isin(box_strings)
             values = df_plot[value_col][mask]
             plot_data.extend(values)
             plot_groups.extend([f"{strain} - {group}" if strain != 'Group' else group] * len(values))

@@ -10,7 +10,7 @@ from pulp import *
 def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: str = None) -> pd.DataFrame:
     """
     Calculate box weights and subject counts.
-    Returns DataFrame with columns: box, strain, weight, subjects_per_box
+    Returns DataFrame with columns: box_number, strain, weight, subjects_per_box
     """
     print(f"\nCalculating box weights:")
     print(f"Value column: {value_col}")
@@ -39,7 +39,7 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
     }).reset_index()
     
     # Rename columns for clarity
-    box_data.columns = [box_col, strain_col, 'weight', 'subjects_per_box']
+    box_data.columns = ['box_number', strain_col, 'weight', 'subjects_per_box']
     
     print("\nBox weights data:")
     print(box_data)
@@ -225,9 +225,9 @@ def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, g
             continue
         
         # Extract values for optimization
-        boxes = strain_data['Box'].astype(str).tolist()
-        values = dict(zip(strain_data['Box'].astype(str), strain_data['weight']))
-        subjects_per_box = dict(zip(strain_data['Box'].astype(str), strain_data['subjects_per_box']))
+        boxes = strain_data['box_number'].astype(str).tolist()
+        values = dict(zip(strain_data['box_number'].astype(str), strain_data['weight']))
+        subjects_per_box = dict(zip(strain_data['box_number'].astype(str), strain_data['subjects_per_box']))
         
         print(f"Boxes for strain {strain}: {boxes}")
         print(f"Values: {values}")
