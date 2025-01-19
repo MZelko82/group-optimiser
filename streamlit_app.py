@@ -107,6 +107,15 @@ def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
 def main():
     st.set_page_config(page_title="Group Optimizer", layout="wide")
     st.title("Group Allocation Optimizer")
+    
+    # Initialize session state
+    if 'results' not in st.session_state:
+        st.session_state.results = None
+    if 'output_df' not in st.session_state:
+        st.session_state.output_df = None
+    if 'optimization_run' not in st.session_state:
+        st.session_state.optimization_run = False
+        
     st.write("""
     Upload your data file (CSV or Excel) and optimize group allocations based on a numeric column while keeping specified groups together.
     The app uses Integer Linear Programming (ILP) to find the mathematically optimal solution that minimizes differences between groups.
@@ -186,167 +195,131 @@ def main():
                 st.error("Please ensure all group names are unique!")
                 st.stop()
             
-            if st.button("Optimize Groups"):
-                with st.spinner("Finding optimal allocation... This may take a moment for larger datasets."):
-                    try:
-                        # Debug: Show input data
-                        st.write("### Input Data")
-                        st.write(f"DataFrame shape: {df.shape}")
-                        st.write("First few rows:")
-                        st.write(df.head())
-                        st.write(f"\nColumns: {df.columns.tolist()}")
-                        
-                        # Get box weights
-                        st.write("\n### Processing Box Weights")
-                        try:
-                            box_weights = get_box_weights(df, value_column, group_column, strain_column)
-                            st.write("Box weights data:")
-                            st.write(box_weights)
-                            
-                            if box_weights.empty:
-                                st.error("No box weights calculated!")
-                                st.stop()
-                        except Exception as e:
-                            st.error(f"Error calculating box weights: {str(e)}")
-                            st.stop()
-                        
-                        # Running optimization section
-                        with st.expander("Running Optimization", expanded=False):
-                            st.write("The optimizer is running to find the best allocation that minimizes weight differences between groups.")
-                            st.write("\nOptimizing for the following strains:")
-                            if strain_column:
-                                strains = df[strain_column].unique()
-                            else:
-                                strains = ['Group']
-                            for strain in strains:
-                                st.write(f"- {strain}")
-                            
-                            # Calculate box weights for all data
-                            box_weights = get_box_weights(
-                                df=df,
-                                value_col=value_column,
-                                box_col=group_column,
-                                strain_col=strain_column
-                            )
-                            
-                            # Debug output
-                            st.write("Box weights:")
-                            st.write(box_weights)
-                            
-                            try:
-                                # Single optimization call for all strains
-                                results = find_optimal_allocation_n_groups(
-                                    box_weights=box_weights,
-                                    n_groups=n_groups,
-                                    group_names=group_names,
-                                    strain_col=strain_column
-                                )
-                                # Debug output
-                                st.write("Optimization results:")
-                                st.write(results)
-                            except Exception as e:
-                                st.error(f"Error in optimization: {str(e)}")
-                                raise e
-                        
-                        # Creating output section
-                        with st.expander("Creating Output", expanded=False):
-                            st.write("Creating output DataFrame with group allocations...")
-                            # Create output DataFrame
-                            output_df = df.copy()
-                            output_df['Allocated_Group'] = None
-                            
-                            # Assign groups
-                            all_boxes = set(df[group_column].astype(str))
-                            assigned_boxes = set()
-                            
-                            # Debug output
-                            st.write("Processing results for group assignment:")
-                            st.write(results)
-                            
-                            for strain, result in results.items():
-                                st.write(f"Processing strain {strain}:")
-                                st.write(result)
-                                for group, boxes in result['groups'].items():
-                                    st.write(f"Assigning group {group} with boxes {boxes}")
-                                    box_strings = [str(b) for b in boxes]
-                                    strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
-                                    mask = strain_mask & df[group_column].astype(str).isin(box_strings)
-                                    output_df.loc[mask, 'Allocated_Group'] = group
-                                    assigned_boxes.update(box_strings)
-                            
-                            unassigned_boxes = all_boxes - assigned_boxes
-                            if unassigned_boxes:
-                                st.error(f"Found {len(unassigned_boxes)} unassigned boxes")
-                                st.write("\nDebug Information")
-                                st.write("1. All boxes:", sorted(all_boxes))
-                                st.write("2. Assigned boxes:", sorted(assigned_boxes))
-                                st.write("3. Unassigned boxes:", sorted(unassigned_boxes))
-                                st.write("\n4. Box weights data:")
-                                st.write(box_weights)
-                                st.write("\n5. Results structure:")
-                                st.write(results)
-                                st.write("\n6. Data types:")
-                                st.write(f"Box column type: {output_df[group_column].dtype}")
-                                st.write(f"First few box values: {output_df[group_column].head()}")
-                                st.stop()
-                        
-                        # Display results
-                        st.write("### Final Results")
-                        st.write("The optimizer has found the mathematically optimal allocation that minimizes weight differences between groups while keeping subjects in the same box together.")
-                        
-                        # Show group summary
-                        st.write("### Group Summary")
-                        group_summary = output_df.groupby('Allocated_Group').agg({
-                            value_column: ['count', 'sum', 'mean'],
-                            group_column: lambda x: ', '.join(sorted(set(x.astype(str))))
-                        }).reset_index()
-                        group_summary.columns = ['Group', 'Subjects', 'Total Weight', 'Mean Weight', 'Boxes']
-                        st.dataframe(group_summary)
-                        
-                        # Show full allocation
-                        st.write("### Full Allocation")
-                        st.dataframe(output_df)
-                        
-                        # Display statistics in a table
-                        st.write("### Group Statistics")
-                        stats_data = []
-                        for strain, result in results.items():
-                            # Add group weights
-                            for group_name, total in result['group_weights'].items():
-                                stats_data.append({
-                                    'Strain': strain,
-                                    'Group': group_name,
-                                    'Total Weight': f"{total:.1f}",
-                                    'Std Dev': f"{result['std_dev']:.2f}",  # Standard deviation within strain
-                                    'Max Difference': f"{result['max_difference']:.2f}"
-                                })
-                        
-                        stats_df = pd.DataFrame(stats_data)
-                        st.dataframe(stats_df)
-                        
-                        # Create plots last with smaller size
-                        st.write("### Weight Distributions")
-                        fig = plot_group_distributions(df, results, value_column, group_column, strain_column)
-                        if fig is not None:
-                            # Make figure 20% smaller
-                            fig.set_size_inches(fig.get_size_inches() * 0.8)
-                            st.pyplot(fig)
-                            
-                        # Provide download link last
-                        output = BytesIO()
-                        output_df.to_csv(output, index=False)
-                        output.seek(0)
-                        st.download_button(
-                            label="Download Results CSV",
-                            data=output,
-                            file_name="optimized_groups.csv",
-                            mime="text/csv"
-                        )
+            if st.button("Run Optimization"):
+                # Clear previous results
+                st.session_state.results = None
+                st.session_state.output_df = None
+                st.session_state.optimization_run = False
+                
+                # Running optimization section
+                with st.expander("Running Optimization", expanded=False):
+                    st.write("The optimizer is running to find the best allocation that minimizes weight differences between groups.")
+                    st.write("\nOptimizing for the following strains:")
+                    if strain_column:
+                        strains = df[strain_column].unique()
+                    else:
+                        strains = ['Group']
+                    for strain in strains:
+                        st.write(f"- {strain}")
                     
+                    # Calculate box weights for all data
+                    box_weights = get_box_weights(
+                        df=df,
+                        value_col=value_column,
+                        box_col=group_column,
+                        strain_col=strain_column
+                    )
+                    
+                    # Debug output
+                    st.write("Box weights:")
+                    st.write(box_weights)
+                    
+                    try:
+                        # Single optimization call for all strains
+                        st.session_state.results = find_optimal_allocation_n_groups(
+                            box_weights=box_weights,
+                            n_groups=n_groups,
+                            group_names=group_names,
+                            strain_col=strain_column
+                        )
+                        # Debug output
+                        st.write("Optimization results:")
+                        st.write(st.session_state.results)
+                        
+                        # Create output DataFrame
+                        st.session_state.output_df = df.copy()
+                        st.session_state.output_df['Allocated_Group'] = None
+                        
+                        # Assign groups
+                        all_boxes = set(df[group_column].astype(str))
+                        assigned_boxes = set()
+                        
+                        # Debug output
+                        st.write("Processing results for group assignment:")
+                        st.write(st.session_state.results)
+                        
+                        for strain, result in st.session_state.results.items():
+                            st.write(f"Processing strain {strain}:")
+                            st.write(result)
+                            for group, boxes in result['groups'].items():
+                                st.write(f"Assigning group {group} with boxes {boxes}")
+                                box_strings = [str(b) for b in boxes]
+                                strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+                                mask = strain_mask & df[group_column].astype(str).isin(box_strings)
+                                st.session_state.output_df.loc[mask, 'Allocated_Group'] = group
+                                assigned_boxes.update(box_strings)
+                        
+                        # Check for unassigned boxes
+                        unassigned = all_boxes - assigned_boxes
+                        if unassigned:
+                            st.warning(f"Warning: Some boxes were not assigned to any group: {unassigned}")
+                        
+                        st.session_state.optimization_run = True
+                        
                     except Exception as e:
-                        st.error(f"An error occurred: {str(e)}")
-                        st.write("Please check your data and try again.")
+                        st.error(f"Error in optimization: {str(e)}")
                         raise e
+                    
+                # Display results if optimization was successful
+                if st.session_state.optimization_run:
+                    # Show group summary
+                    st.write("### Group Summary")
+                    group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
+                        value_column: ['count', 'sum', 'mean'],
+                        group_column: lambda x: ', '.join(sorted(set(x.astype(str))))
+                    }).reset_index()
+                    group_summary.columns = ['Group', 'Subjects', 'Total Weight', 'Mean Weight', 'Boxes']
+                    st.dataframe(group_summary)
+                    
+                    # Show full allocation
+                    st.write("### Full Allocation")
+                    st.dataframe(st.session_state.output_df)
+                    
+                    # Display statistics in a table
+                    st.write("### Group Statistics")
+                    stats_data = []
+                    for strain, result in st.session_state.results.items():
+                        # Add group weights
+                        for group_name, total in result['group_weights'].items():
+                            stats_data.append({
+                                'Strain': strain,
+                                'Group': group_name,
+                                'Total Weight': f"{total:.1f}",
+                                'Std Dev': f"{result['std_dev']:.2f}",  # Standard deviation within strain
+                                'Max Difference': f"{result['max_difference']:.2f}"
+                            })
+                    
+                    stats_df = pd.DataFrame(stats_data)
+                    st.dataframe(stats_df)
+                    
+                    # Create plots last with smaller size
+                    st.write("### Weight Distributions")
+                    fig = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
+                    if fig is not None:
+                        # Make figure 20% smaller
+                        fig.set_size_inches(fig.get_size_inches() * 0.8)
+                        st.pyplot(fig)
+                        
+                    # Provide download link last
+                    output = BytesIO()
+                    st.session_state.output_df.to_csv(output, index=False)
+                    output.seek(0)
+                    st.download_button(
+                        label="Download Results CSV",
+                        data=output,
+                        file_name="optimized_groups.csv",
+                        mime="text/csv"
+                    )
         
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
