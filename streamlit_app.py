@@ -221,25 +221,32 @@ def main():
                             for strain in strains:
                                 st.write(f"- {strain}")
                             
-                            # Run optimization for each strain
-                            results = {}
-                            for strain in strains:
-                                st.write(f"\nProcessing {strain}...")
-                                strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
-                                strain_df = df[strain_mask]
-                                
-                                # Calculate box weights for this strain
-                                strain_box_weights = get_box_weights(
-                                    df=strain_df,
-                                    value_col=value_column,
-                                    box_col=group_column
-                                )
-                                
-                                results[strain] = find_optimal_allocation_n_groups(
-                                    box_weights=strain_box_weights,
+                            # Calculate box weights for all data
+                            box_weights = get_box_weights(
+                                df=df,
+                                value_col=value_column,
+                                box_col=group_column,
+                                strain_col=strain_column
+                            )
+                            
+                            # Debug output
+                            st.write("Box weights:")
+                            st.write(box_weights)
+                            
+                            try:
+                                # Single optimization call for all strains
+                                results = find_optimal_allocation_n_groups(
+                                    box_weights=box_weights,
                                     n_groups=n_groups,
-                                    group_names=group_names
+                                    group_names=group_names,
+                                    strain_col=strain_column
                                 )
+                                # Debug output
+                                st.write("Optimization results:")
+                                st.write(results)
+                            except Exception as e:
+                                st.error(f"Error in optimization: {str(e)}")
+                                raise e
                         
                         # Creating output section
                         with st.expander("Creating Output", expanded=False):
@@ -252,8 +259,15 @@ def main():
                             all_boxes = set(df[group_column].astype(str))
                             assigned_boxes = set()
                             
+                            # Debug output
+                            st.write("Processing results for group assignment:")
+                            st.write(results)
+                            
                             for strain, result in results.items():
+                                st.write(f"Processing strain {strain}:")
+                                st.write(result)
                                 for group, boxes in result['groups'].items():
+                                    st.write(f"Assigning group {group} with boxes {boxes}")
                                     box_strings = [str(b) for b in boxes]
                                     strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
                                     mask = strain_mask & df[group_column].astype(str).isin(box_strings)
