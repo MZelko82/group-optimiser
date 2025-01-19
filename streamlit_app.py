@@ -103,7 +103,6 @@ if uploaded_file is not None:
                     
                     # Create output DataFrame
                     output_df = df.copy()
-                    output_df['Allocated_Group'] = 'Unassigned'
                     
                     # Prepare data for plotting
                     df_plot = df.copy()
@@ -121,6 +120,12 @@ if uploaded_file is not None:
                             if strain_column:
                                 mask &= (df_plot[strain_column] == strain)
                             output_df.loc[mask, 'Allocated_Group'] = group_name
+                    
+                    # Verify all rows have been assigned
+                    unassigned = output_df[output_df['Allocated_Group'].isna()]
+                    if len(unassigned) > 0:
+                        st.error(f"Error: {len(unassigned)} items were not assigned to any group. Please check the data and try again.")
+                        st.stop()
                     
                     # Display results
                     st.write("### Results")

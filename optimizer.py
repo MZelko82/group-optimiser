@@ -35,13 +35,14 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     """
     # Convert values to float, ensuring we only convert the numeric values
     values = {str(k): float(v) for k, v in values.items()}
+    boxes = [str(box) for box in boxes]  # Ensure all boxes are strings
     
     # Create the model
     prob = LpProblem("GroupAllocation", LpMinimize)
     
     # Decision variables: x[i,j] = 1 if box i is assigned to group j
     x = LpVariable.dicts("assign",
-                        ((str(box), group) for box in boxes for group in group_names),
+                        ((box, group) for box in boxes for group in group_names),
                         cat='Binary')
     
     # Variable for the maximum group total (to minimize)
@@ -55,7 +56,7 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     # Constraints
     # 1. Each box must be assigned to exactly one group
     for box in boxes:
-        prob += lpSum(x[str(box), group] for group in group_names) == 1
+        prob += lpSum(x[box, group] for group in group_names) == 1
     
     # 2. Groups should be approximately equal size
     boxes_per_group = len(boxes) // n_groups
@@ -64,12 +65,12 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     for i, group in enumerate(group_names):
         # Add one extra box to early groups if there's a remainder
         target_size = boxes_per_group + (1 if i < remainder else 0)
-        prob += lpSum(x[str(box), group] for box in boxes) == target_size
+        prob += lpSum(x[box, group] for box in boxes) == target_size
     
     # 3. Track max and min group totals
     group_totals = {}
     for group in group_names:
-        group_total = lpSum(values[str(box)] * x[str(box), group] for box in boxes)
+        group_total = lpSum(values[box] * x[box, group] for box in boxes)
         group_totals[group] = group_total
         # Each group total must be less than or equal to max_group_total
         prob += group_total <= max_group_total
@@ -86,11 +87,30 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     allocation = {group: [] for group in group_names}
     final_totals = {group: 0 for group in group_names}
     
+    # First pass: get all definite assignments
+    assigned_boxes = set()
     for box in boxes:
+        assigned = False
         for group in group_names:
-            if value(x[str(box), group]) > 0.5:  # Account for floating-point imprecision
-                allocation[group].append(str(box))
-                final_totals[group] += values[str(box)]
+            if value(x[box, group]) > 0.99:  # Very strict threshold for definite assignments
+                allocation[group].append(box)
+                final_totals[group] += values[box]
+                assigned_boxes.add(box)
+                assigned = True
+                break
+    
+    # Second pass: handle any boxes that weren't definitely assigned due to floating point issues
+    for box in boxes:
+        if box not in assigned_boxes:
+            # Find the group with the highest assignment value
+            best_group = max(group_names, key=lambda g: value(x[box, g]))
+            allocation[best_group].append(box)
+            final_totals[best_group] += values[box]
+    
+    # Verify all boxes are assigned
+    all_assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
+    if len(all_assigned_boxes) != len(boxes):
+        raise ValueError("Not all boxes were assigned to groups")
     
     # Calculate statistics
     totals = list(final_totals.values())
