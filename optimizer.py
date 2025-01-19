@@ -195,11 +195,13 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     
     # Calculate statistics
     totals = list(final_totals.values())
+    std_dev = float(np.std(totals, ddof=1))  # ddof=1 for sample standard deviation
+    
     results = {
         'groups': allocation,
         'group_weights': final_totals,
         'group_subjects': final_subjects,
-        'variance': float(np.var(totals)),
+        'std_dev': std_dev,  # Standard deviation of group weights
         'max_difference': float(max(totals) - min(totals))
     }
     

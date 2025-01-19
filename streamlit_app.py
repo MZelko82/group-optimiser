@@ -328,7 +328,7 @@ def main():
                                     'Strain': strain,
                                     'Group': group_name,
                                     'Total Weight': f"{total:.1f}",
-                                    'Variance': f"{result['variance']:.2f}",
+                                    'Std Dev': f"{result['std_dev']:.2f}",  # Standard deviation within strain
                                     'Max Difference': f"{result['max_difference']:.2f}"
                                 })
                         
