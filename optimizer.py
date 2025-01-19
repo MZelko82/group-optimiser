@@ -135,24 +135,36 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     final_totals = {group: 0 for group in group_names}
     final_subjects = {group: 0 for group in group_names}
     
+    # Track all assigned boxes
+    all_assigned_boxes = set()
+    
     for box in boxes:
         # Find which group this box is assigned to
+        assigned = False
         for group in group_names:
             if value(x[box, group]) > 0.5:  # Box is assigned to this group
                 allocation[group].append(box)
                 final_totals[group] += values[box]
                 final_subjects[group] += subjects_per_box[box]
+                all_assigned_boxes.add(box)
+                assigned = True
                 print(f"Assigned box {box} to group {group}")
                 break
+        
+        if not assigned:
+            print(f"Warning: Box {box} was not assigned to any group!")
     
     print("\nFinal allocation:")
     for group, boxes in allocation.items():
         print(f"{group}: {boxes} ({final_subjects[group]} subjects, Total weight: {final_totals[group]})")
     
     # Verify all boxes are assigned
-    assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
-    if len(assigned_boxes) != len(boxes):
-        missing_boxes = set(boxes) - assigned_boxes
+    missing_boxes = set(boxes) - all_assigned_boxes
+    if missing_boxes:
+        print("\nMissing box assignments:")
+        print(f"Total boxes: {len(boxes)}")
+        print(f"Assigned boxes: {len(all_assigned_boxes)}")
+        print(f"Missing boxes: {missing_boxes}")
         raise ValueError(f"Not all boxes were assigned! Missing: {missing_boxes}")
     
     # Calculate statistics

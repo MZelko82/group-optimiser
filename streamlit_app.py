@@ -149,25 +149,39 @@ if uploaded_file is not None:
                         st.write(f"Results for strain {strain}:")
                         st.write(strain_results)
                         
+                        if not strain_results['groups']:
+                            st.error(f"No group assignments found for strain {strain}")
+                            continue
+                        
                         for group_name, boxes in strain_results['groups'].items():
                             st.write(f"\nAssigning group {group_name}")
                             st.write(f"Boxes to assign: {boxes}")
                             
+                            if not boxes:
+                                st.warning(f"No boxes to assign for group {group_name}")
+                                continue
+                            
                             # Track these boxes
-                            assigned_boxes.update(boxes)
+                            assigned_boxes.update(str(b) for b in boxes)
                             
                             # Create mask using exact box numbers
-                            mask = output_df[group_column].astype(str).isin([str(b) for b in boxes])
+                            box_strings = [str(b) for b in boxes]
+                            mask = output_df[group_column].astype(str).isin(box_strings)
                             if strain_column:
                                 mask &= (output_df[strain_column] == strain)
                             
                             # Debug: Show matching
                             st.write(f"Matching rows found: {mask.sum()}")
                             if mask.sum() == 0:
+                                st.write("\nBox number debug:")
                                 st.write("Box values in data:")
-                                st.write(sorted(output_df[group_column].astype(str).unique()))
+                                data_boxes = sorted(output_df[group_column].astype(str).unique())
+                                st.write(data_boxes)
                                 st.write("Looking for boxes:")
-                                st.write(sorted([str(b) for b in boxes]))
+                                st.write(sorted(box_strings))
+                                st.write("\nBox types:")
+                                st.write(f"Data box type: {type(data_boxes[0])}")
+                                st.write(f"Assignment box type: {type(box_strings[0])}")
                             
                             # Assign group
                             output_df.loc[mask, 'Allocated_Group'] = group_name
@@ -175,20 +189,25 @@ if uploaded_file is not None:
                     # Verify assignments
                     st.write("\n### Verification")
                     st.write("Group assignments:")
-                    st.write(output_df['Allocated_Group'].value_counts())
+                    assignment_counts = output_df['Allocated_Group'].value_counts()
+                    st.write(assignment_counts)
                     
                     # Check for unassigned boxes
                     all_boxes = set(output_df[group_column].astype(str).unique())
                     unassigned_boxes = all_boxes - assigned_boxes
                     if unassigned_boxes:
-                        st.error(f"Found {len(unassigned_boxes)} unassigned boxes: {sorted(unassigned_boxes)}")
+                        st.error(f"Found {len(unassigned_boxes)} unassigned boxes")
                         st.write("\nDebug Information")
-                        st.write("1. All boxes in data:", sorted(all_boxes))
+                        st.write("1. All boxes:", sorted(all_boxes))
                         st.write("2. Assigned boxes:", sorted(assigned_boxes))
-                        st.write("3. Box weights data:")
+                        st.write("3. Unassigned boxes:", sorted(unassigned_boxes))
+                        st.write("\n4. Box weights data:")
                         st.write(box_weights)
-                        st.write("4. Results:")
+                        st.write("\n5. Results structure:")
                         st.write(results)
+                        st.write("\n6. Data types:")
+                        st.write(f"Box column type: {output_df[group_column].dtype}")
+                        st.write(f"First few box values: {output_df[group_column].head()}")
                         st.stop()
                     
                     # Display results
