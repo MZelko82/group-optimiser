@@ -5,13 +5,22 @@ from optimizer import find_optimal_allocation_n_groups, get_box_weights
 import matplotlib.pyplot as plt
 import seaborn as sns
 from io import BytesIO
+from scipy.stats import gaussian_kde
 
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
 def plot_group_distributions(df, results, value_col, strain_col=None):
     """Create distribution plots for the groups."""
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    # Set up colors - alternating between first and last from each palette
+    palette1 = ['#89A8B2', '#F1F0E8']  # First palette
+    palette2 = ['#F0A8D0', '#FFEBD4']  # Second palette
+    
+    # Create a figure with transparent background
+    plt.style.use('dark_background')
+    fig = plt.figure(figsize=(12, 8), facecolor='none')
+    ax = fig.add_subplot(111)
+    ax.set_facecolor('none')
     
     # Get group assignments
     df_plot = df.copy()
@@ -22,16 +31,7 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
     else:
         strains = ['Group']
     
-    # Create a color palette for the groups
-    all_groups = set()
-    for strain in strains:
-        if strain in results:
-            all_groups.update(results[strain]['groups'].keys())
-    n_groups = len(all_groups)
-    colors = sns.color_palette("husl", n_groups)
-    color_map = dict(zip(all_groups, colors))
-    
-    # Plot 1: Box plot
+    # Create plot data
     plot_data = []
     plot_groups = []
     
@@ -53,16 +53,60 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
         'Group': plot_groups
     })
     
-    sns.boxplot(data=plot_df, x='Group', y='Weight', ax=axes[0], palette=color_map)
-    axes[0].set_title('Weight Distribution by Group')
-    axes[0].set_xlabel('Group')
-    axes[0].set_ylabel('Weight')
+    # Get unique groups and assign colors
+    unique_groups = plot_df['Group'].unique()
+    n_groups = len(unique_groups)
     
-    # Plot 2: Violin plot
-    sns.violinplot(data=plot_df, x='Group', y='Weight', ax=axes[1], palette=color_map)
-    axes[1].set_title('Weight Distribution by Group (Violin)')
-    axes[1].set_xlabel('Group')
-    axes[1].set_ylabel('Weight')
+    # Create color list by alternating between first and last colors
+    colors = []
+    for i in range(n_groups):
+        if i < len(palette1) // 2:
+            colors.append(palette1[i * 2])
+        else:
+            idx = (i - len(palette1) // 2) * 2
+            if idx < len(palette2):
+                colors.append(palette2[idx])
+            else:
+                # If we run out of colors, start over
+                colors.append(colors[i % len(colors)])
+    
+    # Create color map
+    color_map = dict(zip(unique_groups, colors))
+    
+    # Plot scatter points
+    for i, (group, group_data) in enumerate(plot_df.groupby('Group')):
+        # Add jitter to y position
+        y_jitter = np.random.normal(i, 0.1, size=len(group_data))
+        ax.scatter(group_data['Weight'], y_jitter, 
+                  alpha=0.5, color=color_map[group], 
+                  label=group, s=50)
+        
+        # Add density plot
+        density = gaussian_kde(group_data['Weight'])
+        xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
+        ys = density(xs)
+        # Scale the density plot
+        ys = ys / ys.max() * 0.5  # Scale to half the distance between groups
+        ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
+    
+    # Customize the plot
+    ax.set_yticks(range(len(unique_groups)))
+    ax.set_yticklabels(unique_groups, color='white', fontsize=10)
+    
+    # Style the plot
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('white')
+    ax.spines['bottom'].set_color('white')
+    
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    
+    ax.set_title('Weight Distribution by Group', color='white', pad=20, fontsize=12)
+    ax.set_xlabel('Weight', color='white', fontsize=10)
+    
+    # Add grid with low opacity
+    ax.grid(True, alpha=0.1, color='white')
     
     plt.tight_layout()
     return fig
