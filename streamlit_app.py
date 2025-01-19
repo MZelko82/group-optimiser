@@ -13,172 +13,87 @@ sns.set_theme(style="whitegrid")
 def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
     """Create distribution plots for the groups, with separate views for overall and by strain."""
     try:
-        # Set up colors - alternating between first and last from each palette
-        palette1 = ['#89A8B2', '#F1F0E8']  # First palette
-        palette2 = ['#F0A8D0', '#FFEBD4']  # Second palette
-        
-        # Get strains
-        if strain_col and strain_col in df.columns:
-            strains = df[strain_col].unique()
-            n_strains = len(strains)
-        else:
-            strains = ['Group']
-            n_strains = 1
-            df = df.copy()
-            df['strain'] = 'Group'
-            strain_col = 'strain'
-        
-        # Create figure with subplots - one for overall, one for each strain
-        with plt.style.context('dark_background'):
-            # Create plot data for all groups
-            all_plot_data = []
-            all_plot_groups = []
-            
-            # Process all data for the overall plot
-            for strain in strains:
-                if strain not in results:
-                    continue
-                    
-                strain_mask = df[strain_col] == strain
-                for group, boxes in results[strain]['groups'].items():
-                    box_strings = [str(b) for b in boxes]
-                    mask = strain_mask & df[box_col].astype(str).isin(box_strings)
-                    values = df[value_col][mask]
-                    group_name = group if n_strains == 1 else f"{strain} - {group}"
-                    all_plot_data.extend(values)
-                    all_plot_groups.extend([group_name] * len(values))
-            
-            all_plot_df = pd.DataFrame({
-                'Weight': all_plot_data,
-                'Group': all_plot_groups
-            })
-            
-            if all_plot_df.empty:
-                st.error("No data available for plotting")
-                return None
-            
-            # Create color map for all groups
-            unique_groups = all_plot_df['Group'].unique()
-            n_groups = len(unique_groups)
-            colors = []
-            for i in range(n_groups):
-                if i < len(palette1) // 2:
-                    colors.append(palette1[i * 2])
+        # Create plot data
+        plot_data = []
+        for strain, strain_results in results.items():
+            for group, boxes in strain_results['groups'].items():
+                box_strings = [str(b) for b in boxes]
+                if strain_col:
+                    mask = (df[strain_col] == strain) & df[box_col].astype(str).isin(box_strings)
                 else:
-                    idx = (i - len(palette1) // 2) * 2
-                    if idx < len(palette2):
-                        colors.append(palette2[idx])
-                    else:
-                        colors.append(colors[i % len(colors)])
+                    mask = df[box_col].astype(str).isin(box_strings)
+                values = df.loc[mask, value_col]
+                for value in values:
+                    plot_data.append({
+                        'Weight': value,
+                        'Group': group,
+                        'Strain': strain if strain_col else 'All'
+                    })
+        
+        if not plot_data:
+            st.error("No data available for plotting")
+            return None
+            
+        plot_df = pd.DataFrame(plot_data)
+        strains = plot_df['Strain'].unique()
+        n_strains = len(strains)
+        
+        # Create figure
+        with plt.style.context('dark_background'):
+            fig, axes = plt.subplots(n_strains, 1, figsize=(12, 6 * n_strains), 
+                                   facecolor='none', constrained_layout=True)
+            if n_strains == 1:
+                axes = [axes]
+            
+            # Set up colors
+            unique_groups = plot_df['Group'].unique()
+            n_groups = len(unique_groups)
+            cmap = plt.cm.get_cmap('Set3')
+            colors = [cmap(i/n_groups) for i in range(n_groups)]
             color_map = dict(zip(unique_groups, colors))
             
-            # Create the figure
-            fig, axes = plt.subplots(n_strains + 1, 1, figsize=(12, 6 * (n_strains + 1)), 
-                                   facecolor='none', constrained_layout=True)
-            if n_strains == 0:
-                axes = [axes]
+            # Create plots for each strain
+            for i, strain in enumerate(strains):
+                ax = axes[i]
+                ax.set_facecolor('none')
                 
-            # Overall plot
-            ax = axes[0]
-            ax.set_facecolor('none')
-            
-            # Plot scatter points and densities for overall plot
-            for i, (group, group_data) in enumerate(all_plot_df.groupby('Group')):
-                # Add jitter to y position
-                y_jitter = np.random.normal(i, 0.1, size=len(group_data))
-                ax.scatter(group_data['Weight'], y_jitter, 
-                          alpha=0.5, color=color_map[group], 
-                          label=group, s=50)
+                strain_data = plot_df[plot_df['Strain'] == strain]
+                strain_groups = strain_data['Group'].unique()
                 
-                # Add density plot if we have enough points
-                if len(group_data) > 1:
-                    try:
-                        density = gaussian_kde(group_data['Weight'])
-                        xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
-                        ys = density(xs)
-                        ys = ys / ys.max() * 0.5
-                        ax.fill_between(xs, i - ys, i + ys, alpha=0.3, color=color_map[group])
-                    except Exception as e:
-                        st.warning(f"Could not create density plot for {group}: {str(e)}")
-            
-            # Customize the overall plot
-            ax.set_yticks(range(len(unique_groups)))
-            ax.set_yticklabels(unique_groups, color='white', fontsize=10)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_color('white')
-            ax.spines['bottom'].set_color('white')
-            ax.tick_params(axis='x', colors='white')
-            ax.tick_params(axis='y', colors='white')
-            ax.set_title('Overall Weight Distribution by Group', color='white', pad=20, fontsize=12)
-            ax.set_xlabel('Weight', color='white', fontsize=10)
-            ax.grid(True, alpha=0.1, color='white')
-            
-            # Create individual strain plots if we have multiple strains
-            if n_strains > 1:
-                for i, strain in enumerate(strains, start=1):
-                    if strain not in results:
-                        continue
-                        
-                    # Create strain-specific plot data
-                    strain_plot_data = []
-                    strain_plot_groups = []
+                # Plot each group
+                for j, group in enumerate(strain_groups):
+                    group_data = strain_data[strain_data['Group'] == group]
+                    weights = group_data['Weight']
                     
-                    strain_mask = df[strain_col] == strain
-                    for group, boxes in results[strain]['groups'].items():
-                        box_strings = [str(b) for b in boxes]
-                        mask = strain_mask & df[box_col].astype(str).isin(box_strings)
-                        values = df[value_col][mask]
-                        strain_plot_data.extend(values)
-                        strain_plot_groups.extend([group] * len(values))
+                    # Add jitter to y position
+                    y_jitter = np.random.normal(j, 0.1, size=len(weights))
+                    ax.scatter(weights, y_jitter, 
+                              alpha=0.5, color=color_map[group], 
+                              label=group, s=50)
                     
-                    strain_plot_df = pd.DataFrame({
-                        'Weight': strain_plot_data,
-                        'Group': strain_plot_groups
-                    })
-                    
-                    # Plot strain-specific data
-                    ax = axes[i]
-                    ax.set_facecolor('none')
-                    
-                    if not strain_plot_df.empty:
-                        for j, (group, group_data) in enumerate(strain_plot_df.groupby('Group')):
-                            # Add jitter to y position
-                            y_jitter = np.random.normal(j, 0.1, size=len(group_data))
-                            ax.scatter(group_data['Weight'], y_jitter, 
-                                      alpha=0.5, color=color_map[group], 
-                                      label=group, s=50)
-                            
-                            # Add density plot if we have enough points
-                            if len(group_data) > 1:
-                                try:
-                                    density = gaussian_kde(group_data['Weight'])
-                                    xs = np.linspace(group_data['Weight'].min(), group_data['Weight'].max(), 200)
-                                    ys = density(xs)
-                                    ys = ys / ys.max() * 0.5
-                                    ax.fill_between(xs, j - ys, j + ys, alpha=0.3, color=color_map[group])
-                                except Exception as e:
-                                    st.warning(f"Could not create density plot for {group} in {strain}: {str(e)}")
-                        
-                        # Customize the strain plot
-                        strain_groups = strain_plot_df['Group'].unique()
-                        ax.set_yticks(range(len(strain_groups)))
-                        ax.set_yticklabels(strain_groups, color='white', fontsize=10)
-                    else:
-                        ax.text(0.5, 0.5, 'No data available', 
-                               horizontalalignment='center',
-                               verticalalignment='center',
-                               color='white')
-                    
-                    ax.spines['top'].set_visible(False)
-                    ax.spines['right'].set_visible(False)
-                    ax.spines['left'].set_color('white')
-                    ax.spines['bottom'].set_color('white')
-                    ax.tick_params(axis='x', colors='white')
-                    ax.tick_params(axis='y', colors='white')
-                    ax.set_title(f'Weight Distribution for {strain}', color='white', pad=20, fontsize=12)
-                    ax.set_xlabel('Weight', color='white', fontsize=10)
-                    ax.grid(True, alpha=0.1, color='white')
+                    # Add density plot if we have enough points
+                    if len(weights) > 1:
+                        try:
+                            density = gaussian_kde(weights)
+                            xs = np.linspace(weights.min(), weights.max(), 200)
+                            ys = density(xs)
+                            ys = ys / ys.max() * 0.5
+                            ax.fill_between(xs, j - ys, j + ys, alpha=0.3, color=color_map[group])
+                        except Exception as e:
+                            st.warning(f"Could not create density plot for {group} in {strain}: {str(e)}")
+                
+                # Customize plot
+                ax.set_yticks(range(len(strain_groups)))
+                ax.set_yticklabels(strain_groups, color='white', fontsize=10)
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('white')
+                ax.spines['bottom'].set_color('white')
+                ax.tick_params(axis='x', colors='white')
+                ax.tick_params(axis='y', colors='white')
+                ax.set_title(f'Weight Distribution for {strain}', color='white', pad=20, fontsize=12)
+                ax.set_xlabel('Weight', color='white', fontsize=10)
+                ax.grid(True, alpha=0.1, color='white')
             
             return fig
             
