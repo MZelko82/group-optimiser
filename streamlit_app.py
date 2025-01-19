@@ -331,12 +331,6 @@ def main():
                         st.write("### Full Allocation")
                         st.dataframe(output_df)
                         
-                        # Create plots
-                        st.write("### Weight Distributions")
-                        fig = plot_group_distributions(df, results, value_column, group_column, strain_column)
-                        if fig is not None:
-                            st.pyplot(fig)
-                        
                         # Provide download link
                         output = BytesIO()
                         output_df.to_csv(output, index=False)
@@ -359,6 +353,12 @@ def main():
                                 st.write(f"- {group_name}: {total:.1f}")
                             st.write(f"Variance between groups: {results[strain]['variance']:.2f}")
                             st.write(f"Maximum difference between groups: {results[strain]['max_difference']:.2f}")
+                            
+                        # Create plots
+                        st.write("### Weight Distributions")
+                        fig = plot_group_distributions(df, results, value_column, group_column, strain_column)
+                        if fig is not None:
+                            st.pyplot(fig)
                     
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
