@@ -4,13 +4,15 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from io import BytesIO
-from optimizer import find_optimal_allocation, get_box_weights, plot_group_distributions
+from optimizer import find_optimal_allocation_n_groups, get_box_weights, plot_group_distributions
 
 st.set_page_config(page_title="Group Optimizer", layout="wide")
 
 st.title("Group Allocation Optimizer")
 st.write("""
 Upload your data file (CSV or Excel) and optimize group allocations based on a numeric column while keeping specified groups together.
+The app uses Integer Linear Programming (ILP) to find the mathematically optimal solution that minimizes differences between groups.
+Note: Larger datasets with many boxes and groups may take longer to process.
 """)
 
 # File upload
@@ -55,77 +57,108 @@ if uploaded_file is not None:
             )
             if strain_column == 'None':
                 strain_column = None
+
+        # Group configuration
+        st.write("### Group Configuration")
+        st.write("""
+        Specify the number of groups and their names. The optimizer will ensure that:
+        1. Items marked to stay together (same box/cage) will be assigned to the same group
+        2. Groups will have approximately equal sizes
+        3. The total values (e.g., weights) will be as similar as possible across groups
+        """)
+        
+        n_groups = st.number_input("Number of groups:", min_value=2, max_value=10, value=2)
+        
+        group_names = []
+        cols = st.columns(min(n_groups, 4))  # Show up to 4 columns
+        for i in range(n_groups):
+            col_idx = i % 4
+            with cols[col_idx]:
+                group_name = st.text_input(f"Name for Group {i+1}:", value=f"Group {i+1}")
+                group_names.append(group_name)
+
+        # Check for duplicate group names
+        if len(set(group_names)) != len(group_names):
+            st.error("Please ensure all group names are unique!")
+            st.stop()
         
         if st.button("Optimize Groups"):
-            # Calculate box weights
-            box_weights = get_box_weights(
-                df, 
-                value_col=value_column,
-                box_col=group_column,
-                strain_col=strain_column
-            )
-            
-            # Find optimal allocation
-            results = find_optimal_allocation(box_weights, strain_col=strain_column)
-            
-            # Create output DataFrame
-            output_df = df.copy()
-            output_df['Allocated_Group'] = 'Unassigned'
-            
-            # Prepare data for plotting
-            df_plot = df.copy()
-            df_plot['Rat Box'] = df_plot[group_column]
-            
-            if strain_column:
-                strains = df[strain_column].unique()
-            else:
-                strains = ['Group']
+            with st.spinner("Finding optimal allocation... This may take a moment for larger datasets."):
+                try:
+                    # Calculate box weights
+                    box_weights = get_box_weights(
+                        df, 
+                        value_col=value_column,
+                        box_col=group_column,
+                        strain_col=strain_column
+                    )
+                    
+                    # Find optimal allocation
+                    results = find_optimal_allocation_n_groups(
+                        box_weights,
+                        n_groups=n_groups,
+                        group_names=group_names,
+                        strain_col=strain_column
+                    )
+                    
+                    # Create output DataFrame
+                    output_df = df.copy()
+                    output_df['Allocated_Group'] = 'Unassigned'
+                    
+                    # Prepare data for plotting
+                    df_plot = df.copy()
+                    df_plot['Rat Box'] = df_plot[group_column]
+                    
+                    if strain_column:
+                        strains = df[strain_column].unique()
+                    else:
+                        strains = ['Group']
+                        
+                    # Assign groups in output DataFrame
+                    for strain in strains:
+                        for group_name, boxes in results[strain]['groups'].items():
+                            mask = df_plot[group_column].isin(boxes)
+                            if strain_column:
+                                mask &= (df_plot[strain_column] == strain)
+                            output_df.loc[mask, 'Allocated_Group'] = group_name
+                    
+                    # Display results
+                    st.write("### Results")
+                    st.write("The optimizer has found the mathematically optimal allocation that minimizes differences between groups while keeping specified items together.")
+                    st.dataframe(output_df)
+                    
+                    # Create plots
+                    fig = plot_group_distributions(
+                        df_plot, 
+                        results, 
+                        value_col=value_column,
+                        strain_col=strain_column
+                    )
+                    st.pyplot(fig)
+                    
+                    # Provide download link
+                    output = BytesIO()
+                    output_df.to_csv(output, index=False)
+                    output.seek(0)
+                    st.download_button(
+                        label="Download Results CSV",
+                        data=output,
+                        file_name="optimized_groups.csv",
+                        mime="text/csv"
+                    )
+                    
+                    # Display statistics
+                    st.write("### Group Statistics")
+                    for strain in strains:
+                        st.write(f"\n**{strain}**")
+                        st.write("Group totals:")
+                        for group_name, total in results[strain]['group_weights'].items():
+                            st.write(f"- {group_name}: {total:.1f}")
+                        st.write(f"Variance between groups: {results[strain]['variance']:.2f}")
+                        st.write(f"Maximum difference between groups: {results[strain]['max_difference']:.2f}")
                 
-            for strain in strains:
-                # Assign CON group
-                mask = df_plot[group_column].isin(results[strain]['CON'])
-                if strain_column:
-                    mask &= (df_plot[strain_column] == strain)
-                output_df.loc[mask, 'Allocated_Group'] = 'CON'
-                
-                # Assign CR group
-                mask = df_plot[group_column].isin(results[strain]['CR'])
-                if strain_column:
-                    mask &= (df_plot[strain_column] == strain)
-                output_df.loc[mask, 'Allocated_Group'] = 'CR'
-            
-            # Display results
-            st.write("### Results")
-            st.dataframe(output_df)
-            
-            # Create plots
-            fig = plot_group_distributions(
-                df_plot, 
-                results, 
-                value_col=value_column,
-                strain_col=strain_column
-            )
-            st.pyplot(fig)
-            
-            # Provide download link
-            output = BytesIO()
-            output_df.to_csv(output, index=False)
-            output.seek(0)
-            st.download_button(
-                label="Download Results CSV",
-                data=output,
-                file_name="optimized_groups.csv",
-                mime="text/csv"
-            )
-            
-            # Display statistics
-            st.write("### Group Statistics")
-            for strain in strains:
-                st.write(f"\n**{strain}**")
-                st.write(f"- CON group total: {results[strain]['CON_weight']:.1f}")
-                st.write(f"- CR group total: {results[strain]['CR_weight']:.1f}")
-                st.write(f"- Difference: {results[strain]['weight_difference']:.1f}")
-                st.write(f"- Percent difference: {(results[strain]['weight_difference'] / results[strain]['CON_weight'] * 100):.1f}%")
-                
+                except Exception as e:
+                    st.error(f"Error processing file: {str(e)}")
+                    
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")

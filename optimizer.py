@@ -4,6 +4,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy import stats
 import itertools
+from typing import List, Dict, Any
+from pulp import *
 
 def get_box_weights(df, value_col, box_col, strain_col=None):
     """Calculate total value for each box."""
@@ -11,8 +13,87 @@ def get_box_weights(df, value_col, box_col, strain_col=None):
         return df.groupby([strain_col, box_col])[value_col].sum().reset_index()
     return df.groupby([box_col])[value_col].sum().reset_index()
 
-def find_optimal_allocation(box_weights, strain_col=None):
-    """Find the optimal allocation of boxes to minimize value difference between groups."""
+def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str]) -> Dict:
+    """
+    Find the optimal allocation of boxes to groups using Integer Linear Programming.
+    This ensures the most balanced distribution possible by minimizing the maximum difference between groups.
+    
+    Args:
+        boxes: List of box identifiers
+        values: Dictionary mapping box identifiers to their values
+        n_groups: Number of groups to create
+        group_names: Names of the groups
+    
+    Returns:
+        Dictionary containing the optimal allocation and statistics
+    """
+    # Create the model
+    prob = LpProblem("GroupAllocation", LpMinimize)
+    
+    # Decision variables: x[i,j] = 1 if box i is assigned to group j
+    x = LpVariable.dicts("assign",
+                        ((box, group) for box in boxes for group in group_names),
+                        cat='Binary')
+    
+    # Variable for the maximum group total (to minimize)
+    max_group_total = LpVariable("max_group_total")
+    # Variable for the minimum group total (to minimize difference)
+    min_group_total = LpVariable("min_group_total")
+    
+    # Objective: Minimize the difference between max and min group totals
+    prob += max_group_total - min_group_total
+    
+    # Constraints
+    # 1. Each box must be assigned to exactly one group
+    for box in boxes:
+        prob += lpSum(x[box, group] for group in group_names) == 1
+    
+    # 2. Groups should be approximately equal size
+    boxes_per_group = len(boxes) // n_groups
+    remainder = len(boxes) % n_groups
+    
+    for i, group in enumerate(group_names):
+        # Add one extra box to early groups if there's a remainder
+        target_size = boxes_per_group + (1 if i < remainder else 0)
+        prob += lpSum(x[box, group] for box in boxes) == target_size
+    
+    # 3. Track max and min group totals
+    group_totals = {}
+    for group in group_names:
+        group_total = lpSum(values[box] * x[box, group] for box in boxes)
+        group_totals[group] = group_total
+        # Each group total must be less than or equal to max_group_total
+        prob += group_total <= max_group_total
+        # Each group total must be greater than or equal to min_group_total
+        prob += group_total >= min_group_total
+    
+    # Solve the problem
+    prob.solve(PULP_CBC_CMD(msg=False))
+    
+    if LpStatus[prob.status] != 'Optimal':
+        raise ValueError("Could not find optimal solution")
+    
+    # Extract results
+    allocation = {group: [] for group in group_names}
+    final_totals = {group: 0 for group in group_names}
+    
+    for box in boxes:
+        for group in group_names:
+            if value(x[box, group]) > 0.5:  # Account for floating-point imprecision
+                allocation[group].append(box)
+                final_totals[group] += values[box]
+    
+    # Calculate statistics
+    totals = list(final_totals.values())
+    return {
+        'groups': allocation,
+        'group_weights': final_totals,
+        'variance': np.var(totals),
+        'max_difference': max(totals) - min(totals)
+    }
+
+def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: List[str], strain_col=None):
+    """Find the optimal allocation of boxes to minimize value difference between N groups using ILP."""
     results = {}
     
     if strain_col:
@@ -25,31 +106,13 @@ def find_optimal_allocation(box_weights, strain_col=None):
     for strain in strains:
         strain_boxes = box_weights[box_weights[strain_col] == strain]
         boxes = strain_boxes[strain_boxes.columns[1]].tolist()  # box column is always second
-        n_boxes = len(boxes)
-        n_boxes_per_group = n_boxes // 2
+        values = strain_boxes[strain_boxes.columns[2]].tolist()  # value column is always third
+        box_values = dict(zip(boxes, values))
         
-        min_diff = float('inf')
-        optimal_allocation = None
-        
-        # Generate all possible combinations for the first group
-        for combo in itertools.combinations(boxes, n_boxes_per_group):
-            combo_value = strain_boxes[strain_boxes[strain_boxes.columns[1]].isin(combo)][strain_boxes.columns[2]].sum()
-            complement = [box for box in boxes if box not in combo]
-            complement_value = strain_boxes[strain_boxes[strain_boxes.columns[1]].isin(complement)][strain_boxes.columns[2]].sum()
-            
-            diff = abs(combo_value - complement_value)
-            
-            if diff < min_diff:
-                min_diff = diff
-                optimal_allocation = {
-                    'CON': sorted(combo),
-                    'CR': sorted(complement),
-                    'CON_weight': combo_value,
-                    'CR_weight': complement_value,
-                    'weight_difference': diff
-                }
-        
-        results[strain] = optimal_allocation
+        try:
+            results[strain] = find_optimal_allocation_ilp(boxes, box_values, n_groups, group_names)
+        except Exception as e:
+            raise ValueError(f"Error optimizing allocation for {strain}: {str(e)}")
     
     return results
 
@@ -65,8 +128,13 @@ def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
     else:
         strains = df[strain_col].unique()
     
-    # Set consistent colors for groups
-    colors = {'CON': '#2ecc71', 'CR': '#e74c3c'}
+    # Generate colors for groups
+    unique_groups = set()
+    for strain_result in results.values():
+        unique_groups.update(strain_result['groups'].keys())
+    n_groups = len(unique_groups)
+    colors = sns.color_palette("husl", n_groups)
+    color_dict = dict(zip(sorted(unique_groups), colors))
     
     # Create the plots
     n_strains = len(strains)
@@ -79,12 +147,9 @@ def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
         strain_data = df[df[strain_col] == strain]
         
         # Assign groups based on results
-        for box in results[strain]['CON']:
-            mask = strain_data['Rat Box'] == box
-            df.loc[df.index[mask], 'Group'] = 'CON'
-        for box in results[strain]['CR']:
-            mask = strain_data['Rat Box'] == box
-            df.loc[df.index[mask], 'Group'] = 'CR'
+        for group_name, boxes in results[strain]['groups'].items():
+            mask = strain_data['Rat Box'].isin(boxes)
+            df.loc[df.index[mask], 'Group'] = group_name
         
         strain_data = df[df[strain_col] == strain]
         
@@ -94,7 +159,7 @@ def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
                    hue='Group',
                    fill=True,
                    alpha=0.5,
-                   palette=colors,
+                   palette=color_dict,
                    ax=axes[i])
         
         # Calculate and display group means
@@ -107,25 +172,27 @@ def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
         x_range = xmax - xmin
         offset = x_range * 0.03
         
-        for group in ['CON', 'CR']:
-            axes[i].axvline(group_means[group], 
-                          color=colors[group],
+        # Add mean lines and labels for each group
+        for j, (group, mean) in enumerate(group_means.items()):
+            axes[i].axvline(mean, 
+                          color=color_dict[group],
                           linestyle='--',
                           alpha=0.8)
-            label_x = group_means[group] + (offset if group == 'CR' else -offset)
-            axes[i].text(label_x, 
-                        ymax * 1.1,
-                        f'{group}\n{group_means[group]:.1f}',
-                        horizontalalignment='center',
+            # Stagger labels vertically
+            y_pos = ymax * (1.1 - j * 0.1)
+            axes[i].text(mean + offset,
+                        y_pos,
+                        f'{group}\n{mean:.1f}',
+                        horizontalalignment='left',
                         verticalalignment='center',
-                        color=colors[group])
+                        color=color_dict[group])
         
         # Add scatter plot at the bottom
-        for group in ['CON', 'CR']:
+        for group in group_means.index:
             group_data = strain_data[strain_data['Group'] == group]
             axes[i].scatter(group_data[value_col], 
                           [-0.02] * len(group_data),
-                          c=[colors[group]],
+                          c=[color_dict[group]],
                           alpha=0.6,
                           s=100,
                           label=group)
