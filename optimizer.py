@@ -37,138 +37,153 @@ def get_box_weights(df, value_col, box_col, strain_col=None):
 def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str], subjects_per_box: Dict[str, int]) -> Dict:
     """
     Find the optimal allocation of boxes to groups using Integer Linear Programming.
-    This ensures the most balanced distribution possible by minimizing the maximum difference between groups.
+    Uses a two-step approach:
+    1. First find a feasible solution that balances subject counts
+    2. Then optimize weights while maintaining subject balance
     """
     print(f"\nStarting ILP optimization")
     print(f"Number of boxes: {len(boxes)}")
     print(f"Number of groups: {n_groups}")
     print(f"Group names: {group_names}")
-    print(f"Subjects per box: {subjects_per_box}")
     
     # Convert values to float, ensuring we only convert the numeric values
     values = {str(k): float(v) for k, v in values.items()}
     boxes = [str(box) for box in boxes]  # Ensure all boxes are strings
     
-    print(f"Processed values: {values}")
-    
-    # Create the model
-    prob = LpProblem("GroupAllocation", LpMinimize)
+    # Step 1: Find a feasible solution balancing subjects
+    prob = LpProblem("GroupAllocation_Step1", LpMinimize)
     
     # Decision variables: x[i,j] = 1 if box i is assigned to group j
     x = LpVariable.dicts("assign",
                         ((box, group) for box in boxes for group in group_names),
                         cat='Binary')
     
-    # Variable for the maximum group total (to minimize)
-    max_group_total = LpVariable("max_group_total")
-    # Variable for the minimum group total (to minimize difference)
-    min_group_total = LpVariable("min_group_total")
+    # Variables for tracking subject count differences
+    max_subjects = LpVariable("max_subjects", lowBound=0)
+    min_subjects = LpVariable("min_subjects", lowBound=0)
     
-    # Objective: Minimize the difference between max and min group totals
-    prob += max_group_total - min_group_total
+    # Objective: Minimize the difference in subject counts
+    prob += max_subjects - min_subjects
     
     # Constraints
     # 1. Each box must be assigned to exactly one group
     for box in boxes:
         prob += lpSum(x[box, group] for group in group_names) == 1
     
-    # 2. Groups should have approximately equal number of subjects (not boxes)
+    # 2. Track min and max subjects per group
     total_subjects = sum(subjects_per_box.values())
     subjects_per_group = total_subjects // n_groups
     remainder = total_subjects % n_groups
     
     print(f"Total subjects: {total_subjects}")
-    print(f"Subjects per group: {subjects_per_group}")
+    print(f"Target subjects per group: {subjects_per_group}")
     print(f"Remainder: {remainder}")
     
-    # Calculate min and max subjects per group
-    min_subjects = subjects_per_group
-    max_subjects = subjects_per_group + (1 if remainder > 0 else 0)
+    # Allow more flexibility in group sizes
+    min_allowed = subjects_per_group - 2
+    max_allowed = subjects_per_group + 2
     
-    print(f"Min subjects per group: {min_subjects}")
-    print(f"Max subjects per group: {max_subjects}")
+    print(f"Allowed group size range: {min_allowed} to {max_allowed} subjects")
     
-    # Allow some flexibility in group sizes to ensure feasibility
     for group in group_names:
         group_subjects = lpSum(subjects_per_box[box] * x[box, group] for box in boxes)
-        # Groups must be within ±1 of target size
-        prob += group_subjects >= min_subjects
+        # Track min/max
         prob += group_subjects <= max_subjects
+        prob += group_subjects >= min_subjects
+        # Keep within allowed range
+        prob += group_subjects >= min_allowed
+        prob += group_subjects <= max_allowed
     
-    # 3. Track max and min group totals (for weights)
-    group_totals = {}
-    for group in group_names:
-        group_total = lpSum(values[box] * x[box, group] for box in boxes)
-        group_totals[group] = group_total
-        prob += group_total <= max_group_total
-        prob += group_total >= min_group_total
-    
-    # Solve the problem
-    print("\nSolving optimization problem...")
+    # Solve step 1
+    print("\nSolving step 1: Subject balance...")
     status = prob.solve(PULP_CBC_CMD(msg=False))
-    print(f"Solution status: {LpStatus[prob.status]}")
+    print(f"Step 1 status: {LpStatus[prob.status]}")
     
     if LpStatus[prob.status] != 'Optimal':
-        # Get more detailed debug information
-        group_constraints = {}
+        # Get debug information
+        group_info = {}
         for group in group_names:
-            group_subjects = sum(subjects_per_box[box] for box in boxes if value(x[box, group]) > 0.5)
-            group_constraints[group] = {
-                'subjects': group_subjects,
-                'min_required': min_subjects,
-                'max_allowed': max_subjects,
-                'boxes': [box for box in boxes if value(x[box, group]) > 0.5]
+            assigned_boxes = [box for box in boxes if value(x[box, group]) > 0.5]
+            group_info[group] = {
+                'boxes': assigned_boxes,
+                'subjects': sum(subjects_per_box[box] for box in assigned_boxes),
+                'weight': sum(values[box] for box in assigned_boxes),
+                'box_sizes': {box: subjects_per_box[box] for box in assigned_boxes}
             }
         
-        raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}\n"
+        raise ValueError(f"Could not find feasible subject balance. Status: {LpStatus[prob.status]}\n"
                         f"Debug info:\n"
-                        f"Group constraints: {group_constraints}\n"
+                        f"Group info: {group_info}\n"
                         f"Total subjects: {total_subjects}\n"
-                        f"Target per group: {subjects_per_group} (±{1 if remainder > 0 else 0})")
+                        f"Allowed range: {min_allowed} to {max_allowed} subjects per group\n"
+                        f"Box sizes: {subjects_per_box}")
     
-    # Extract results
+    # Get the subject counts from step 1
+    group_subjects = {group: sum(subjects_per_box[box] * value(x[box, group]) for box in boxes)
+                     for group in group_names}
+    
+    # Step 2: Optimize weights while maintaining subject balance
+    prob2 = LpProblem("GroupAllocation_Step2", LpMinimize)
+    
+    # New decision variables
+    y = LpVariable.dicts("assign2",
+                        ((box, group) for box in boxes for group in group_names),
+                        cat='Binary')
+    
+    # Variables for tracking weight differences
+    max_weight = LpVariable("max_weight")
+    min_weight = LpVariable("min_weight")
+    
+    # Objective: Minimize weight difference
+    prob2 += max_weight - min_weight
+    
+    # Constraints from step 1
+    for box in boxes:
+        prob2 += lpSum(y[box, group] for group in group_names) == 1
+    
+    # Maintain subject balance from step 1
+    for group in group_names:
+        # Allow small deviation from step 1 result
+        subjects = lpSum(subjects_per_box[box] * y[box, group] for box in boxes)
+        prob2 += subjects >= group_subjects[group] - 1
+        prob2 += subjects <= group_subjects[group] + 1
+        
+        # Track weights
+        weight = lpSum(values[box] * y[box, group] for box in boxes)
+        prob2 += weight <= max_weight
+        prob2 += weight >= min_weight
+    
+    # Solve step 2
+    print("\nSolving step 2: Weight balance...")
+    status2 = prob2.solve(PULP_CBC_CMD(msg=False))
+    print(f"Step 2 status: {LpStatus[prob2.status]}")
+    
+    if LpStatus[prob2.status] != 'Optimal':
+        # Use the solution from step 1 if step 2 fails
+        print("Warning: Using subject-balanced solution as weight optimization failed")
+        y = x
+    
+    # Extract final results
     allocation = {group: [] for group in group_names}
     final_totals = {group: 0 for group in group_names}
-    assignments = {}  # Track assignments for debugging
+    final_subjects = {group: 0 for group in group_names}
     
-    # First pass: get all definite assignments
     for box in boxes:
-        # Get assignment values for each group
-        group_values = {group: value(x[box, group]) for group in group_names}
-        assignments[box] = group_values
-        print(f"Box {box} assignments: {group_values}")
-        
-        # Find the group with the highest assignment value
-        best_group = max(group_values.items(), key=lambda x: x[1])[0]
+        best_group = max(group_names, key=lambda g: value(y[box, g]))
         allocation[best_group].append(box)
         final_totals[best_group] += values[box]
+        final_subjects[best_group] += subjects_per_box[box]
     
     print("\nFinal allocation:")
     for group, boxes in allocation.items():
-        group_subjects = sum(subjects_per_box[box] for box in boxes)
-        print(f"{group}: {boxes} ({group_subjects} subjects, Total weight: {final_totals[group]})")
-    
-    # Verify all boxes are assigned
-    all_assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
-    missing_boxes = set(boxes) - all_assigned_boxes
-    if missing_boxes:
-        # Debug information
-        debug_info = {
-            'missing_boxes': list(missing_boxes),
-            'assignments': {box: {g: v for g, v in assignments[box].items() if v > 0.01} 
-                          for box in missing_boxes},
-            'group_sizes': {g: sum(subjects_per_box[box] for box in boxes) 
-                          for g, boxes in allocation.items()},
-            'target_sizes': {g: subjects_per_group + (1 if i < remainder else 0) 
-                           for i, g in enumerate(group_names)}
-        }
-        raise ValueError(f"Not all boxes were assigned to groups. Debug info: {debug_info}")
+        print(f"{group}: {boxes} ({final_subjects[group]} subjects, Total weight: {final_totals[group]})")
     
     # Calculate statistics
     totals = list(final_totals.values())
     return {
         'groups': allocation,
         'group_weights': final_totals,
+        'group_subjects': final_subjects,
         'variance': float(np.var(totals)),
         'max_difference': float(max(totals) - min(totals))
     }
