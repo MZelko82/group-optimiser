@@ -17,8 +17,18 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
     print(f"Box column: {box_col}")
     print(f"Strain column: {strain_col}")
     
-    # Convert box numbers to strings for consistent handling
+    # Make a copy to avoid modifying the original
     df = df.copy()
+    
+    # Verify columns exist
+    if box_col not in df.columns:
+        raise ValueError(f"Box column '{box_col}' not found in DataFrame. Available columns: {df.columns.tolist()}")
+    if value_col not in df.columns:
+        raise ValueError(f"Value column '{value_col}' not found in DataFrame")
+    if strain_col and strain_col not in df.columns:
+        raise ValueError(f"Strain column '{strain_col}' not found in DataFrame")
+    
+    # Convert box numbers to strings for consistent handling
     df[box_col] = df[box_col].astype(str)
     
     # Group by box and optionally strain
@@ -31,23 +41,11 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
         df['strain'] = 'Group'
         strain_col = 'strain'
     
-    # Calculate weights and counts
-    agg_dict = {
-        value_col: 'sum',  # Sum of values for weight
-        box_col: 'size'    # Count of subjects per box
-    }
-    
-    box_data = df.groupby(group_cols).agg(agg_dict).reset_index()
-    
-    # Get the column names in the order they appear
-    weight_col = f"{value_col}_sum"
-    count_col = f"{box_col}_size"
-    
-    # Rename only the aggregated columns, keeping original box and strain columns
-    box_data = box_data.rename(columns={
-        weight_col: 'weight',
-        count_col: 'subjects_per_box'
-    })
+    # Calculate weights and counts using named aggregations
+    box_data = df.groupby(group_cols).agg(
+        weight=(value_col, 'sum'),
+        subjects_per_box=(box_col, 'size')
+    ).reset_index()
     
     print("\nBox weights data:")
     print(box_data)

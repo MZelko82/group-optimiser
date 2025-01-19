@@ -169,23 +169,29 @@ def main():
                 
             col1, col2 = st.columns(2)
             
+            # Show column names for reference
+            st.write("Available columns:", df.columns.tolist())
+            
             with col1:
                 value_column = st.selectbox(
                     "Select the column to optimize groups on (numeric values):",
-                    numeric_columns
+                    options=numeric_columns,
+                    format_func=lambda x: f"{x} (numeric)"
                 )
             
             with col2:
                 group_column = st.selectbox(
                     "Select the column that identifies which items must stay together:",
-                    df.columns
+                    options=df.columns.tolist(),
+                    format_func=lambda x: f"{x} ({df[x].dtype})"
                 )
             
             strain_column = None
             if len(df.columns) > 2:  # If there are more columns, allow strain selection
                 strain_column = st.selectbox(
                     "Optional: Select a column to separate optimizations by (e.g., strain/type):",
-                    ['None'] + list(df.columns)
+                    options=['None'] + df.columns.tolist(),
+                    format_func=lambda x: x if x == 'None' else f"{x} ({df[x].dtype})"
                 )
                 if strain_column == 'None':
                     strain_column = None
