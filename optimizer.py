@@ -78,39 +78,41 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
         prob += group_total >= min_group_total
     
     # Solve the problem
-    prob.solve(PULP_CBC_CMD(msg=False))
+    status = prob.solve(PULP_CBC_CMD(msg=False))
     
     if LpStatus[prob.status] != 'Optimal':
-        raise ValueError("Could not find optimal solution")
+        raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}")
     
     # Extract results
     allocation = {group: [] for group in group_names}
     final_totals = {group: 0 for group in group_names}
+    assignments = {}  # Track assignments for debugging
     
     # First pass: get all definite assignments
-    assigned_boxes = set()
     for box in boxes:
-        assigned = False
-        for group in group_names:
-            if value(x[box, group]) > 0.99:  # Very strict threshold for definite assignments
-                allocation[group].append(box)
-                final_totals[group] += values[box]
-                assigned_boxes.add(box)
-                assigned = True
-                break
-    
-    # Second pass: handle any boxes that weren't definitely assigned due to floating point issues
-    for box in boxes:
-        if box not in assigned_boxes:
-            # Find the group with the highest assignment value
-            best_group = max(group_names, key=lambda g: value(x[box, g]))
-            allocation[best_group].append(box)
-            final_totals[best_group] += values[box]
+        # Get assignment values for each group
+        group_values = {group: value(x[box, group]) for group in group_names}
+        assignments[box] = group_values
+        
+        # Find the group with the highest assignment value
+        best_group = max(group_values.items(), key=lambda x: x[1])[0]
+        allocation[best_group].append(box)
+        final_totals[best_group] += values[box]
     
     # Verify all boxes are assigned
     all_assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
-    if len(all_assigned_boxes) != len(boxes):
-        raise ValueError("Not all boxes were assigned to groups")
+    missing_boxes = set(boxes) - all_assigned_boxes
+    if missing_boxes:
+        # Debug information
+        debug_info = {
+            'missing_boxes': list(missing_boxes),
+            'assignments': {box: {g: v for g, v in assignments[box].items() if v > 0.01} 
+                          for box in missing_boxes},
+            'group_sizes': {g: len(boxes) for g, boxes in allocation.items()},
+            'target_sizes': {g: boxes_per_group + (1 if i < remainder else 0) 
+                           for i, g in enumerate(group_names)}
+        }
+        raise ValueError(f"Not all boxes were assigned to groups. Debug info: {debug_info}")
     
     # Calculate statistics
     totals = list(final_totals.values())

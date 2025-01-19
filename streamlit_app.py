@@ -124,7 +124,14 @@ if uploaded_file is not None:
                     # Verify all rows have been assigned
                     unassigned = output_df[output_df['Allocated_Group'].isna()]
                     if len(unassigned) > 0:
-                        st.error(f"Error: {len(unassigned)} items were not assigned to any group. Please check the data and try again.")
+                        st.error("Error: Some items were not assigned to groups.")
+                        st.write("### Unassigned Items")
+                        st.dataframe(unassigned)
+                        st.write("### Debug Information")
+                        st.write("Please check that:")
+                        st.write("1. All items have valid numeric values")
+                        st.write("2. The number of items is divisible by the number of groups")
+                        st.write("3. All items in the same box have consistent values")
                         st.stop()
                     
                     # Display results
