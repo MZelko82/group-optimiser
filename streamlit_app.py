@@ -226,7 +226,14 @@ def main():
                             for strain in strains:
                                 st.write(f"\nProcessing {strain}...")
                                 strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
-                                strain_box_weights = box_weights[box_weights.index.get_level_values('strain' if strain_column else 'Group') == strain]
+                                strain_df = df[strain_mask]
+                                
+                                # Calculate box weights for this strain
+                                strain_box_weights = get_box_weights(
+                                    df=strain_df,
+                                    value_column=value_column,
+                                    box_column=group_column
+                                )
                                 
                                 results[strain] = find_optimal_allocation_n_groups(
                                     box_weights=strain_box_weights,
