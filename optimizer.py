@@ -17,15 +17,24 @@ def get_box_weights(df, value_col, box_col, strain_col=None):
     df[value_col] = pd.to_numeric(df[value_col], errors='coerce')
     print(f"After conversion:\n{df.head()}")
     
+    # Get the number of subjects per box for allocation
+    box_counts = df.groupby(box_col).size().reset_index(name='subjects_per_box')
+    print(f"Subjects per box:\n{box_counts}")
+    
+    # Calculate total weight per box (we'll use this for balancing)
     if strain_col:
-        grouped = df.groupby([strain_col, box_col])[value_col].sum()
+        box_totals = df.groupby([strain_col, box_col])[value_col].sum().reset_index()
+        # Add the count information
+        box_totals = box_totals.merge(box_counts, on=box_col)
     else:
-        grouped = df.groupby([box_col])[value_col].sum()
-    result = grouped.reset_index()
-    print(f"Grouped result:\n{result}")
-    return result
+        box_totals = df.groupby(box_col)[value_col].sum().reset_index()
+        # Add the count information
+        box_totals = box_totals.merge(box_counts, on=box_col)
+    
+    print(f"Box totals with subject counts:\n{box_totals}")
+    return box_totals
 
-def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str]) -> Dict:
+def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str], subjects_per_box: Dict[str, int]) -> Dict:
     """
     Find the optimal allocation of boxes to groups using Integer Linear Programming.
     This ensures the most balanced distribution possible by minimizing the maximum difference between groups.
@@ -34,6 +43,7 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Number of boxes: {len(boxes)}")
     print(f"Number of groups: {n_groups}")
     print(f"Group names: {group_names}")
+    print(f"Subjects per box: {subjects_per_box}")
     
     # Convert values to float, ensuring we only convert the numeric values
     values = {str(k): float(v) for k, v in values.items()}
@@ -62,27 +72,27 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     for box in boxes:
         prob += lpSum(x[box, group] for group in group_names) == 1
     
-    # 2. Groups should be approximately equal size
-    boxes_per_group = len(boxes) // n_groups
-    remainder = len(boxes) % n_groups
+    # 2. Groups should have approximately equal number of subjects (not boxes)
+    total_subjects = sum(subjects_per_box.values())
+    subjects_per_group = total_subjects // n_groups
+    remainder = total_subjects % n_groups
     
-    print(f"Boxes per group: {boxes_per_group}")
+    print(f"Total subjects: {total_subjects}")
+    print(f"Subjects per group: {subjects_per_group}")
     print(f"Remainder: {remainder}")
     
     for i, group in enumerate(group_names):
-        # Add one extra box to early groups if there's a remainder
-        target_size = boxes_per_group + (1 if i < remainder else 0)
-        print(f"Target size for {group}: {target_size}")
-        prob += lpSum(x[box, group] for box in boxes) == target_size
+        # Add one extra subject to early groups if there's a remainder
+        target_size = subjects_per_group + (1 if i < remainder else 0)
+        print(f"Target size for {group}: {target_size} subjects")
+        prob += lpSum(subjects_per_box[box] * x[box, group] for box in boxes) == target_size
     
-    # 3. Track max and min group totals
+    # 3. Track max and min group totals (for weights)
     group_totals = {}
     for group in group_names:
         group_total = lpSum(values[box] * x[box, group] for box in boxes)
         group_totals[group] = group_total
-        # Each group total must be less than or equal to max_group_total
         prob += group_total <= max_group_total
-        # Each group total must be greater than or equal to min_group_total
         prob += group_total >= min_group_total
     
     # Solve the problem
@@ -112,7 +122,8 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     
     print("\nFinal allocation:")
     for group, boxes in allocation.items():
-        print(f"{group}: {boxes} (Total: {final_totals[group]})")
+        group_subjects = sum(subjects_per_box[box] for box in boxes)
+        print(f"{group}: {boxes} ({group_subjects} subjects, Total weight: {final_totals[group]})")
     
     # Verify all boxes are assigned
     all_assigned_boxes = set().union(*[set(boxes) for boxes in allocation.values()])
@@ -123,8 +134,9 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
             'missing_boxes': list(missing_boxes),
             'assignments': {box: {g: v for g, v in assignments[box].items() if v > 0.01} 
                           for box in missing_boxes},
-            'group_sizes': {g: len(boxes) for g, boxes in allocation.items()},
-            'target_sizes': {g: boxes_per_group + (1 if i < remainder else 0) 
+            'group_sizes': {g: sum(subjects_per_box[box] for box in boxes) 
+                          for g, boxes in allocation.items()},
+            'target_sizes': {g: subjects_per_group + (1 if i < remainder else 0) 
                            for i, g in enumerate(group_names)}
         }
         raise ValueError(f"Not all boxes were assigned to groups. Debug info: {debug_info}")
@@ -169,13 +181,15 @@ def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: Li
         boxes = strain_boxes[box_col].astype(str).tolist()
         values = pd.to_numeric(strain_boxes[value_col], errors='coerce').fillna(0).tolist()
         box_values = dict(zip(boxes, values))
+        subjects_per_box = dict(zip(boxes, strain_boxes['subjects_per_box'].tolist()))
         
         print(f"Boxes: {boxes}")
         print(f"Values: {values}")
         print(f"Box-value mapping: {box_values}")
+        print(f"Subjects per box: {subjects_per_box}")
         
         try:
-            results[strain] = find_optimal_allocation_ilp(boxes, box_values, n_groups, group_names)
+            results[strain] = find_optimal_allocation_ilp(boxes, box_values, n_groups, group_names, subjects_per_box)
             print(f"Allocation successful for strain {strain}")
             print(f"Results: {results[strain]}")
         except Exception as e:

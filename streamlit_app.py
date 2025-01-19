@@ -145,18 +145,34 @@ if uploaded_file is not None:
                         st.write(f"Value types: {df[value_column].dtype}")
                         st.write(f"Sample values: {df[value_column].head()}")
                         st.write("2. The number of items is divisible by the number of groups")
-                        st.write(f"Total items: {len(df)}")
+                        total_subjects = len(df)
+                        st.write(f"Total subjects: {total_subjects}")
                         st.write(f"Number of groups: {n_groups}")
-                        st.write(f"Items per group: {len(df) // n_groups}")
-                        st.write(f"Remainder: {len(df) % n_groups}")
-                        st.write("3. All items in the same box have consistent values")
-                        st.write("Box grouping:")
-                        st.dataframe(df.groupby(group_column)[value_column].agg(['count', 'mean', 'std']).reset_index())
+                        st.write(f"Subjects per group: {total_subjects // n_groups}")
+                        st.write(f"Remainder: {total_subjects % n_groups}")
+                        st.write("Box summary:")
+                        box_summary = df.groupby(group_column).agg({
+                            value_column: ['count', 'sum', 'mean'],
+                        }).reset_index()
+                        box_summary.columns = [group_column, 'Subjects', 'Total Weight', 'Mean Weight']
+                        st.dataframe(box_summary)
                         st.stop()
                     
                     # Display results
                     st.write("### Results")
-                    st.write("The optimizer has found the mathematically optimal allocation that minimizes differences between groups while keeping specified items together.")
+                    st.write("The optimizer has found the mathematically optimal allocation that minimizes weight differences between groups while keeping subjects in the same box together.")
+                    
+                    # Show group summary
+                    st.write("### Group Summary")
+                    group_summary = output_df.groupby('Allocated_Group').agg({
+                        value_column: ['count', 'sum', 'mean'],
+                        group_column: lambda x: ', '.join(sorted(set(x.astype(str))))
+                    }).reset_index()
+                    group_summary.columns = ['Group', 'Subjects', 'Total Weight', 'Mean Weight', 'Boxes']
+                    st.dataframe(group_summary)
+                    
+                    # Show full allocation
+                    st.write("### Full Allocation")
                     st.dataframe(output_df)
                     
                     # Create plots
