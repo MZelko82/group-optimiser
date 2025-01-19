@@ -307,17 +307,6 @@ def main():
                         st.write("### Full Allocation")
                         st.dataframe(output_df)
                         
-                        # Provide download link
-                        output = BytesIO()
-                        output_df.to_csv(output, index=False)
-                        output.seek(0)
-                        st.download_button(
-                            label="Download Results CSV",
-                            data=output,
-                            file_name="optimized_groups.csv",
-                            mime="text/csv"
-                        )
-                        
                         # Display statistics in a table
                         st.write("### Group Statistics")
                         stats_data = []
@@ -342,6 +331,17 @@ def main():
                             # Make figure 20% smaller
                             fig.set_size_inches(fig.get_size_inches() * 0.8)
                             st.pyplot(fig)
+                            
+                        # Provide download link last
+                        output = BytesIO()
+                        output_df.to_csv(output, index=False)
+                        output.seek(0)
+                        st.download_button(
+                            label="Download Results CSV",
+                            data=output,
+                            file_name="optimized_groups.csv",
+                            mime="text/csv"
+                        )
                     
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
