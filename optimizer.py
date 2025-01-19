@@ -38,8 +38,8 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
         box_col: 'size'  # This gives us the count of subjects per box
     }).reset_index()
     
-    # Rename columns for clarity
-    box_data.columns = ['box_number', strain_col, 'weight', 'subjects_per_box']
+    # Rename columns for clarity but keep original box column name
+    box_data.columns = [box_col, strain_col, 'weight', 'subjects_per_box']
     
     print("\nBox weights data:")
     print(box_data)
@@ -212,6 +212,9 @@ def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, g
         strain_col = 'strain'
         box_weights['strain'] = 'Group'
     
+    # Get the box column name (first column)
+    box_col = box_weights.columns[0]
+    
     results = {}
     
     # Process each strain separately
@@ -225,9 +228,9 @@ def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, g
             continue
         
         # Extract values for optimization
-        boxes = strain_data['box_number'].astype(str).tolist()
-        values = dict(zip(strain_data['box_number'].astype(str), strain_data['weight']))
-        subjects_per_box = dict(zip(strain_data['box_number'].astype(str), strain_data['subjects_per_box']))
+        boxes = strain_data[box_col].astype(str).tolist()
+        values = dict(zip(strain_data[box_col].astype(str), strain_data['weight']))
+        subjects_per_box = dict(zip(strain_data[box_col].astype(str), strain_data['subjects_per_box']))
         
         print(f"Boxes for strain {strain}: {boxes}")
         print(f"Values: {values}")

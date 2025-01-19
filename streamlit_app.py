@@ -10,7 +10,7 @@ from scipy.stats import gaussian_kde
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
-def plot_group_distributions(df, results, value_col, strain_col=None):
+def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
     """Create distribution plots for the groups."""
     # Set up colors - alternating between first and last from each palette
     palette1 = ['#89A8B2', '#F1F0E8']  # First palette
@@ -24,7 +24,6 @@ def plot_group_distributions(df, results, value_col, strain_col=None):
     
     # Get group assignments
     df_plot = df.copy()
-    box_col = 'box_number'  # Updated column name in the input data
     
     # Process each strain
     if strain_col:
@@ -343,6 +342,7 @@ def main():
                             df=df, 
                             results=results, 
                             value_col=value_column,
+                            box_col=group_column,
                             strain_col=strain_column
                         )
                         st.pyplot(fig)
