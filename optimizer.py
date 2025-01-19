@@ -32,25 +32,22 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
         strain_col = 'strain'
     
     # Calculate weights and counts
-    box_data = df.groupby(group_cols).agg({
-        value_col: 'sum',
-        box_col: 'size'  # This gives us the count of subjects per box
-    }).reset_index()
+    agg_dict = {
+        value_col: 'sum',  # Sum of values for weight
+        box_col: 'size'    # Count of subjects per box
+    }
     
-    # Create new column names, preserving the original box and strain column names
-    new_columns = []
-    for col in box_data.columns:
-        if col == box_col:
-            new_columns.append(box_col)  # Keep original box column name
-        elif col == strain_col:
-            new_columns.append(strain_col)  # Keep original strain column name
-        elif col == value_col:
-            new_columns.append('weight')  # Weight column
-        else:
-            new_columns.append('subjects_per_box')  # Count column
+    box_data = df.groupby(group_cols).agg(agg_dict).reset_index()
     
-    # Rename columns
-    box_data.columns = new_columns
+    # Get the column names in the order they appear
+    weight_col = f"{value_col}_sum"
+    count_col = f"{box_col}_size"
+    
+    # Rename only the aggregated columns, keeping original box and strain columns
+    box_data = box_data.rename(columns={
+        weight_col: 'weight',
+        count_col: 'subjects_per_box'
+    })
     
     print("\nBox weights data:")
     print(box_data)
