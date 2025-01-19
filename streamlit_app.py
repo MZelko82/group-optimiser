@@ -86,6 +86,8 @@ if uploaded_file is not None:
             with st.spinner("Finding optimal allocation... This may take a moment for larger datasets."):
                 try:
                     # Calculate box weights
+                    st.write("### Processing Data")
+                    st.write("1. Loading and preprocessing data...")
                     box_weights = get_box_weights(
                         df, 
                         value_col=value_column,
@@ -93,7 +95,11 @@ if uploaded_file is not None:
                         strain_col=strain_column
                     )
                     
+                    st.write("Box weights calculated:")
+                    st.dataframe(box_weights)
+                    
                     # Find optimal allocation
+                    st.write("2. Finding optimal allocation...")
                     results = find_optimal_allocation_n_groups(
                         box_weights,
                         n_groups=n_groups,
@@ -102,6 +108,7 @@ if uploaded_file is not None:
                     )
                     
                     # Create output DataFrame
+                    st.write("3. Creating output...")
                     output_df = df.copy()
                     
                     # Prepare data for plotting
@@ -112,10 +119,14 @@ if uploaded_file is not None:
                         strains = df[strain_column].unique()
                     else:
                         strains = ['Group']
+                    
+                    st.write(f"Processing {len(strains)} strain(s): {strains}")
                         
                     # Assign groups in output DataFrame
                     for strain in strains:
+                        st.write(f"Assigning groups for strain: {strain}")
                         for group_name, boxes in results[strain]['groups'].items():
+                            st.write(f"- {group_name}: {len(boxes)} boxes")
                             mask = df_plot[group_column].isin(boxes)
                             if strain_column:
                                 mask &= (df_plot[strain_column] == strain)
@@ -130,8 +141,17 @@ if uploaded_file is not None:
                         st.write("### Debug Information")
                         st.write("Please check that:")
                         st.write("1. All items have valid numeric values")
+                        st.write(f"Current value column: {value_column}")
+                        st.write(f"Value types: {df[value_column].dtype}")
+                        st.write(f"Sample values: {df[value_column].head()}")
                         st.write("2. The number of items is divisible by the number of groups")
+                        st.write(f"Total items: {len(df)}")
+                        st.write(f"Number of groups: {n_groups}")
+                        st.write(f"Items per group: {len(df) // n_groups}")
+                        st.write(f"Remainder: {len(df) % n_groups}")
                         st.write("3. All items in the same box have consistent values")
+                        st.write("Box grouping:")
+                        st.dataframe(df.groupby(group_column)[value_column].agg(['count', 'mean', 'std']).reset_index())
                         st.stop()
                     
                     # Display results
