@@ -14,8 +14,10 @@ def get_box_weights(df, value_col, box_col, strain_col=None):
     df[value_col] = pd.to_numeric(df[value_col], errors='coerce')
     
     if strain_col:
-        return df.groupby([strain_col, box_col])[value_col].sum().reset_index()
-    return df.groupby([box_col])[value_col].sum().reset_index()
+        grouped = df.groupby([strain_col, box_col])[value_col].sum()
+    else:
+        grouped = df.groupby([box_col])[value_col].sum()
+    return grouped.reset_index()
 
 def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_groups: int, group_names: List[str]) -> Dict:
     """
@@ -31,15 +33,15 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     Returns:
         Dictionary containing the optimal allocation and statistics
     """
-    # Convert values to float
-    values = {k: float(v) for k, v in values.items()}
+    # Convert values to float, ensuring we only convert the numeric values
+    values = {str(k): float(v) for k, v in values.items()}
     
     # Create the model
     prob = LpProblem("GroupAllocation", LpMinimize)
     
     # Decision variables: x[i,j] = 1 if box i is assigned to group j
     x = LpVariable.dicts("assign",
-                        ((box, group) for box in boxes for group in group_names),
+                        ((str(box), group) for box in boxes for group in group_names),
                         cat='Binary')
     
     # Variable for the maximum group total (to minimize)
@@ -53,7 +55,7 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     # Constraints
     # 1. Each box must be assigned to exactly one group
     for box in boxes:
-        prob += lpSum(x[box, group] for group in group_names) == 1
+        prob += lpSum(x[str(box), group] for group in group_names) == 1
     
     # 2. Groups should be approximately equal size
     boxes_per_group = len(boxes) // n_groups
@@ -62,12 +64,12 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     for i, group in enumerate(group_names):
         # Add one extra box to early groups if there's a remainder
         target_size = boxes_per_group + (1 if i < remainder else 0)
-        prob += lpSum(x[box, group] for box in boxes) == target_size
+        prob += lpSum(x[str(box), group] for box in boxes) == target_size
     
     # 3. Track max and min group totals
     group_totals = {}
     for group in group_names:
-        group_total = lpSum(values[box] * x[box, group] for box in boxes)
+        group_total = lpSum(values[str(box)] * x[str(box), group] for box in boxes)
         group_totals[group] = group_total
         # Each group total must be less than or equal to max_group_total
         prob += group_total <= max_group_total
@@ -86,9 +88,9 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     
     for box in boxes:
         for group in group_names:
-            if value(x[box, group]) > 0.5:  # Account for floating-point imprecision
-                allocation[group].append(box)
-                final_totals[group] += values[box]
+            if value(x[str(box), group]) > 0.5:  # Account for floating-point imprecision
+                allocation[group].append(str(box))
+                final_totals[group] += values[str(box)]
     
     # Calculate statistics
     totals = list(final_totals.values())
@@ -112,8 +114,14 @@ def find_optimal_allocation_n_groups(box_weights, n_groups: int, group_names: Li
     
     for strain in strains:
         strain_boxes = box_weights[box_weights[strain_col] == strain]
-        boxes = strain_boxes[strain_boxes.columns[1]].astype(str).tolist()  # box column is always second
-        values = strain_boxes[strain_boxes.columns[2]].astype(float).tolist()  # value column is always third
+        
+        # Get the column names for box and value columns
+        box_col = strain_boxes.columns[1]  # box column is always second
+        value_col = strain_boxes.columns[2]  # value column is always third
+        
+        # Convert boxes to strings and ensure values are numeric
+        boxes = strain_boxes[box_col].astype(str).tolist()
+        values = pd.to_numeric(strain_boxes[value_col], errors='coerce').fillna(0).tolist()
         box_values = dict(zip(boxes, values))
         
         try:
