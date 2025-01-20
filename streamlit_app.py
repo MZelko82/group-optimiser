@@ -25,11 +25,20 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     if len(strains) == 0:
         return None
     
+    # Calculate base dimensions and scaling factors
+    base_width = 24
+    base_height = 6
+    
+    # Get number of groups from the first strain (all strains have same number of groups)
+    n_groups = len(results[strains[0]]['groups'])
+    # Scale height based on number of groups (2 groups = base height)
+    height_scale = max(1.0, (n_groups / 2))
+    
     # First create individual strain plots
     figs = []
     for strain in strains:
         # Create figure with transparent background
-        fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')  
+        fig, ax = plt.subplots(figsize=(base_width, base_height * height_scale), facecolor='none')
         ax.set_facecolor('none')
         
         # Get data for this strain
@@ -76,12 +85,16 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         for spine in ax.spines.values():
             spine.set_color('white')
         
-        plt.tight_layout()  
+        plt.tight_layout()
         figs.append(fig)
     
     # Only create combined plot if we have a strain column
     if strain_column is not None and len(strains) > 1:
-        fig_combined, ax_combined = plt.subplots(figsize=(12, 4), facecolor='none')  
+        # Scale height based on both number of groups and number of strains
+        n_strains = len(strains)
+        combined_height_scale = height_scale * (n_strains / 2)
+        
+        fig_combined, ax_combined = plt.subplots(figsize=(base_width, base_height * combined_height_scale), facecolor='none')
         ax_combined.set_facecolor('none')
         
         # Prepare data for combined plot
@@ -138,7 +151,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         for spine in ax_combined.spines.values():
             spine.set_color('white')
         
-        plt.tight_layout()  
+        plt.tight_layout()
     else:
         fig_combined = None
     
