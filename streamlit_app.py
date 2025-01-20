@@ -182,20 +182,16 @@ def main():
                 
                 # Column to optimize
                 st.markdown("##### Which column should be optimized for even distribution?")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    value_column = st.selectbox("", df.select_dtypes(include=[np.number]).columns.tolist(), key='optimize')
+                value_column = st.selectbox("", df.select_dtypes(include=[np.number]).columns.tolist(), key='optimize')
                 
                 # Column for keeping subjects together
                 st.markdown("##### Which column indicates box-mates that should stay together?")
-                with col2:
-                    group_column = st.selectbox("", df.columns.tolist(), key='stay_together')
+                group_column = st.selectbox("", df.columns.tolist(), key='stay_together')
                 
                 # Optional strain column
                 st.markdown("##### Which column indicates strain? (Optional)")
-                with col3:
-                    strain_column = st.selectbox("", ['None'] + df.columns.tolist(), key='strain')
-                    strain_column = None if strain_column == 'None' else strain_column
+                strain_column = st.selectbox("", ['None'] + df.columns.tolist(), key='strain')
+                strain_column = None if strain_column == 'None' else strain_column
                 
                 # Display available columns for reference
                 st.markdown("#### Available Columns:")
