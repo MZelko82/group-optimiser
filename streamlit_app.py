@@ -256,7 +256,7 @@ def main():
             
             # Group configuration
             st.write("### Group Configuration")
-            n_groups = st.number_input("Number of groups", min_value=2, max_value=10, value=4)
+            n_groups = st.number_input("Number of groups", min_value=2, max_value=10, value=2)
             
             # Run optimization
             if st.button("Optimize Groups"):
@@ -338,9 +338,16 @@ def main():
                 
                 # Show group summary
                 st.write("### Group Summary")
-                group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
-                    value_column: ['count', 'mean', 'std']
-                }).round(2)
+                if strain_column:
+                    # Group by strain and allocated group
+                    group_summary = st.session_state.output_df.groupby([strain_column, 'Allocated_Group']).agg({
+                        value_column: ['count', 'mean', 'std']
+                    }).round(2)
+                else:
+                    # Just group by allocated group
+                    group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
+                        value_column: ['count', 'mean', 'std']
+                    }).round(2)
                 
                 st.write(group_summary)
                 
