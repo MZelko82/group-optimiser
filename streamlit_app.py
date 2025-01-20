@@ -258,6 +258,21 @@ def main():
             st.write("### Group Configuration")
             n_groups = st.number_input("Number of groups", min_value=2, max_value=10, value=2)
             
+            # Group names input
+            st.write("#### Group Labels")
+            group_names = []
+            cols = st.columns(min(n_groups, 4))  # Show up to 4 columns
+            for i in range(n_groups):
+                col_idx = i % 4
+                with cols[col_idx]:
+                    group_name = st.text_input(f"Group {i+1} Label:", value=f"Group {i+1}")
+                    group_names.append(group_name)
+            
+            # Check for duplicate group names
+            if len(set(group_names)) != len(group_names):
+                st.error("Please ensure all group names are unique!")
+                st.stop()
+            
             # Run optimization
             if st.button("Optimize Groups"):
                 try:
@@ -288,7 +303,7 @@ def main():
                         st.session_state.results = find_optimal_allocation_n_groups(
                             box_weights=box_weights,
                             n_groups=n_groups,
-                            group_names=[f"Group {i+1}" for i in range(n_groups)],
+                            group_names=group_names,  # Use the user-defined group names
                             strain_col=strain_column
                         )
                         
