@@ -1,26 +1,26 @@
-# Group Allocation Optimizer
+# Group Allocation Optimiser
 
-A web application for optimizing experimental group allocations while maintaining box/cage integrity. Uses Integer Linear Programming (ILP) to create balanced groups based on numeric values (e.g., weights) while ensuring animals from the same box stay together.
+A web application for optimising experimental group allocations while maintaining box/cage integrity. Uses Integer Linear Programming (ILP) to create balanced groups based on numeric values (e.g., weights) while ensuring animals from the same box stay together.
 
 ## Primary Access
 
 The app is hosted on Streamlit Cloud and can be accessed at:
-[https://group-optimizer.streamlit.app](https://group-optimizer.streamlit.app)
+[https://anxious-rats.streamlit.app](https://anxious-rats.streamlit.app)
 
 ## Features
 
 - Upload CSV files with experimental data
-- Optimize group allocations based on:
+- Optimise group allocations based on:
   - Numeric values (e.g., weights) to balance between groups
   - Box/cage identifiers to maintain group integrity
   - Optional grouping variable (e.g., strain, age) for stratified allocation
-- Interactive visualizations:
+- Interactive visualisations:
   - Initial distribution plots
-  - Optimized group distribution plots
+  - Optimised group distribution plots
   - Combined distribution plots when using grouping variables
 - Statistical summaries by group and subgroup
-- Customizable group labels
-- Download optimized allocations as CSV
+- Customisable group labels
+- Download optimised allocations as CSV
 
 ## Input Requirements
 
@@ -67,18 +67,18 @@ streamlit run streamlit_app.py
 ## Usage
 
 1. Upload your CSV file
-2. Select the columns for optimization:
-   - Value column to optimize (must be numeric)
+2. Select the columns for optimisation:
+   - Value column to optimise (must be numeric)
    - Box/cage identifier column
    - Optional grouping variable column
 3. Configure groups:
    - Set number of groups (2-10)
-   - Customize group labels if desired
-4. Click "Optimize Groups" to run
+   - Customise group labels if desired
+4. Click "Optimise Groups" to run
 5. Review the results:
    - Initial distribution plot
    - Group summary statistics
-   - Optimized distribution plots
+   - Optimised distribution plots
 6. Download the results as CSV
 
 ## Privacy
