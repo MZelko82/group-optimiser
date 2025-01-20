@@ -29,7 +29,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     figs = []
     for strain in strains:
         # Create figure with transparent background
-        fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')
+        fig, ax = plt.subplots(figsize=(12, 5), facecolor='none')
         ax.set_facecolor('none')
         
         # Get data for this strain
@@ -81,7 +81,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     # Only create combined plot if we have a strain column
     if strain_column is not None and len(strains) > 1:
-        fig_combined, ax_combined = plt.subplots(figsize=(12, 3), facecolor='none')
+        fig_combined, ax_combined = plt.subplots(figsize=(12, 5), facecolor='none')
         ax_combined.set_facecolor('none')
         
         # Prepare data for combined plot
@@ -150,7 +150,7 @@ def plot_initial_distribution(df, value_column, strain_column=None):
     colors = ['#89A8B2', '#F1F0E8',  # Primary palette alternating first/last
              '#F0A8D0', '#FFEBD4']   # Secondary palette alternating first/last
     
-    fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')
+    fig, ax = plt.subplots(figsize=(12, 5), facecolor='none')
     ax.set_facecolor('none')
     
     # Prepare data for plotting
