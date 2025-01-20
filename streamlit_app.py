@@ -15,9 +15,12 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     if results is None:
         return None
     
-    # Set style and color palette (temporary colors until specification is provided)
+    # Set style and color palette
     plt.style.use('dark_background')
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']  # Will update with specified colors
+    # Primary palette: https://colorhunt.co/palette/89a8b2b3c8cfe5e1daf1f0e8
+    # Secondary palette: https://colorhunt.co/palette/f0a8d0f7b5caffc6c6ffebd4
+    colors = ['#89A8B2', '#F1F0E8',  # Primary palette alternating first/last
+             '#F0A8D0', '#FFEBD4']   # Secondary palette alternating first/last
     
     # Create separate plots for each strain
     strains = list(results.keys())
