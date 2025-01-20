@@ -10,99 +10,105 @@ from scipy.stats import gaussian_kde
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
-def plot_group_distributions(df, results, value_col, box_col, strain_col=None):
-    """Create distribution plots for the groups, with separate views for overall and by strain."""
-    try:
-        # Create plot data
-        plot_data = []
-        for strain, strain_results in results.items():
-            for group, boxes in strain_results['groups'].items():
-                box_strings = [str(b) for b in boxes]
-                if strain_col:
-                    mask = (df[strain_col] == strain) & df[box_col].astype(str).isin(box_strings)
-                else:
-                    mask = df[box_col].astype(str).isin(box_strings)
-                values = df.loc[mask, value_col]
-                for value in values:
-                    plot_data.append({
-                        'Weight': value,
-                        'Group': group,
-                        'Strain': strain if strain_col else 'All'
-                    })
-        
-        if not plot_data:
-            st.error("No data available for plotting")
-            return None
-            
-        plot_df = pd.DataFrame(plot_data)
-        strains = plot_df['Strain'].unique()
-        n_strains = len(strains)
-        
-        # Create figure
-        with plt.style.context('dark_background'):
-            fig, axes = plt.subplots(n_strains, 1, figsize=(12, 6 * n_strains), 
-                                   facecolor='none', constrained_layout=True)
-            if n_strains == 1:
-                axes = [axes]
-            
-            # Set up colors
-            unique_groups = plot_df['Group'].unique()
-            n_groups = len(unique_groups)
-            cmap = plt.cm.get_cmap('Set3')
-            colors = [cmap(i/n_groups) for i in range(n_groups)]
-            color_map = dict(zip(unique_groups, colors))
-            
-            # Create plots for each strain
-            for i, strain in enumerate(strains):
-                ax = axes[i]
-                ax.set_facecolor('none')
-                
-                strain_data = plot_df[plot_df['Strain'] == strain]
-                strain_groups = strain_data['Group'].unique()
-                
-                # Plot each group
-                for j, group in enumerate(strain_groups):
-                    group_data = strain_data[strain_data['Group'] == group]
-                    weights = group_data['Weight']
-                    
-                    # Add jitter to y position
-                    y_jitter = np.random.normal(j, 0.1, size=len(weights))
-                    ax.scatter(weights, y_jitter, 
-                              alpha=0.5, color=color_map[group], 
-                              label=group, s=50)
-                    
-                    # Add density plot if we have enough points
-                    if len(weights) > 1:
-                        try:
-                            density = gaussian_kde(weights)
-                            xs = np.linspace(weights.min(), weights.max(), 200)
-                            ys = density(xs)
-                            ys = ys / ys.max() * 0.5
-                            ax.fill_between(xs, j - ys, j + ys, alpha=0.3, color=color_map[group])
-                        except Exception as e:
-                            st.warning(f"Could not create density plot for {group} in {strain}: {str(e)}")
-                
-                # Customize plot
-                ax.set_yticks(range(len(strain_groups)))
-                ax.set_yticklabels(strain_groups, color='white', fontsize=10)
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_color('white')
-                ax.spines['bottom'].set_color('white')
-                ax.tick_params(axis='x', colors='white')
-                ax.tick_params(axis='y', colors='white')
-                ax.set_title(f'Weight Distribution for {strain}', color='white', pad=20, fontsize=12)
-                ax.set_xlabel('Weight', color='white', fontsize=10)
-                ax.grid(True, alpha=0.1, color='white')
-            
-            return fig
-            
-    except Exception as e:
-        st.error(f"Error creating plots: {str(e)}")
-        import traceback
-        st.write("Debug information:")
-        st.write(traceback.format_exc())
+def plot_group_distributions(df, results, value_column, group_column, strain_column=None):
+    """Plot weight distributions for each group, separated by strain."""
+    if results is None:
         return None
+    
+    # Set style
+    plt.style.use('dark_background')
+    
+    # Create separate plots for each strain
+    strains = list(results.keys())
+    if len(strains) == 0:
+        return None
+    
+    # First create individual strain plots
+    figs = []
+    for strain in strains:
+        # Create figure
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Get data for this strain
+        strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+        strain_data = df[strain_mask]
+        
+        # Plot groups
+        for group_name in results[strain]['groups'].keys():
+            group_mask = strain_data['Allocated_Group'] == group_name
+            group_values = strain_data.loc[group_mask, value_column]
+            
+            # Create violin plot
+            parts = ax.violinplot(group_values, positions=[list(results[strain]['groups'].keys()).index(group_name)],
+                                showmeans=True, showmedians=True)
+            
+            # Customize violin plot colors
+            for pc in parts['bodies']:
+                pc.set_facecolor('lightblue')
+                pc.set_alpha(0.7)
+            parts['cmeans'].set_color('red')
+            parts['cmedians'].set_color('white')
+        
+        # Customize plot
+        ax.set_xticks(range(len(results[strain]['groups'])))
+        ax.set_xticklabels(results[strain]['groups'].keys())
+        ax.set_title(f'{strain} Weight Distribution by Group')
+        ax.set_ylabel('Weight')
+        ax.grid(True, alpha=0.3)
+        
+        figs.append(fig)
+    
+    # Now create a combined plot
+    fig_combined, ax_combined = plt.subplots(figsize=(12, 6))
+    
+    # Calculate total number of groups and spacing
+    total_groups = sum(len(results[strain]['groups']) for strain in strains)
+    group_width = 0.8
+    strain_spacing = 2  # Space between strains
+    
+    # Plot each strain's groups
+    current_position = 0
+    all_positions = []
+    all_labels = []
+    
+    for strain_idx, strain in enumerate(strains):
+        strain_data = df[df[strain_column] == strain] if strain_column else df
+        
+        # Plot each group in this strain
+        for group_name in results[strain]['groups'].keys():
+            group_mask = strain_data['Allocated_Group'] == group_name
+            group_values = strain_data.loc[group_mask, value_column]
+            
+            # Create violin plot
+            parts = ax_combined.violinplot(group_values, positions=[current_position],
+                                         showmeans=True, showmedians=True)
+            
+            # Customize violin plot colors
+            for pc in parts['bodies']:
+                pc.set_facecolor(['lightblue', 'lightgreen'][strain_idx % 2])
+                pc.set_alpha(0.7)
+            parts['cmeans'].set_color('red')
+            parts['cmedians'].set_color('white')
+            
+            all_positions.append(current_position)
+            all_labels.append(f"{strain}\n{group_name}")
+            current_position += 1
+        
+        # Add spacing between strains if not the last strain
+        if strain_idx < len(strains) - 1:
+            current_position += strain_spacing
+    
+    # Customize combined plot
+    ax_combined.set_xticks(all_positions)
+    ax_combined.set_xticklabels(all_labels, rotation=45)
+    ax_combined.set_title('Combined Weight Distribution by Strain and Group')
+    ax_combined.set_ylabel('Weight')
+    ax_combined.grid(True, alpha=0.3)
+    
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+    
+    return figs, fig_combined
 
 def main():
     st.set_page_config(page_title="Group Optimizer", layout="wide")
@@ -315,12 +321,18 @@ def main():
                     
                     # Create plots last with smaller size
                     st.write("### Weight Distributions")
-                    fig = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
-                    if fig is not None:
-                        # Make figure 40% smaller (20% reduction in both dimensions)
-                        current_size = fig.get_size_inches()
-                        fig.set_size_inches(current_size[0] * 0.6, current_size[1] * 0.6)
-                        st.pyplot(fig)
+                    plot_results = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
+                    
+                    if plot_results is not None:
+                        strain_figs, combined_fig = plot_results
+                        
+                        # Show strain-specific plots
+                        for fig in strain_figs:
+                            st.pyplot(fig, use_container_width=True)
+                        
+                        # Show combined plot
+                        st.write("### Combined Weight Distribution")
+                        st.pyplot(combined_fig, use_container_width=True)
                     
                     # Create a separate container for the download button
                     download_container = st.container()
