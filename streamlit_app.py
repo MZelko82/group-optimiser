@@ -25,20 +25,11 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     if len(strains) == 0:
         return None
     
-    # Calculate base dimensions and scaling factors
-    base_width = 24
-    base_height = 6
-    
-    # Get number of groups from the first strain (all strains have same number of groups)
-    n_groups = len(results[strains[0]]['groups'])
-    # Scale height based on number of groups (2 groups = base height)
-    height_scale = max(1.0, (n_groups / 2))
-    
     # First create individual strain plots
     figs = []
     for strain in strains:
         # Create figure with transparent background
-        fig, ax = plt.subplots(figsize=(base_width, base_height * height_scale), facecolor='none')
+        fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')
         ax.set_facecolor('none')
         
         # Get data for this strain
@@ -90,11 +81,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     # Only create combined plot if we have a strain column
     if strain_column is not None and len(strains) > 1:
-        # Scale height based on both number of groups and number of strains
-        n_strains = len(strains)
-        combined_height_scale = height_scale * (n_strains / 2)
-        
-        fig_combined, ax_combined = plt.subplots(figsize=(base_width, base_height * combined_height_scale), facecolor='none')
+        fig_combined, ax_combined = plt.subplots(figsize=(12, 3), facecolor='none')
         ax_combined.set_facecolor('none')
         
         # Prepare data for combined plot
@@ -163,7 +150,7 @@ def plot_initial_distribution(df, value_column, strain_column=None):
     colors = ['#89A8B2', '#F1F0E8',  # Primary palette alternating first/last
              '#F0A8D0', '#FFEBD4']   # Secondary palette alternating first/last
     
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor='none')
+    fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')
     ax.set_facecolor('none')
     
     # Prepare data for plotting
@@ -365,12 +352,10 @@ def main():
                     strain_figs, combined_fig = plot_results
                     
                     if strain_figs:
-                        col1, col2, col3 = st.columns([1, 2, 1])
-                        with col2:
-                            for fig in strain_figs:
-                                st.pyplot(fig)
-                            if combined_fig is not None:
-                                st.pyplot(combined_fig)
+                        for fig in strain_figs:
+                            st.pyplot(fig)
+                        if combined_fig is not None:
+                            st.pyplot(combined_fig)
                 
                 # Create a separate container for the download button
                 download_container = st.container()
