@@ -33,27 +33,30 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
         strain_data = df[strain_mask]
         
-        # Plot groups
+        # Prepare data for plotting
+        plot_data = []
         for group_name in results[strain]['groups'].keys():
             # Get boxes for this group
             box_strings = [str(b) for b in results[strain]['groups'][group_name]]
             group_mask = strain_data[group_column].astype(str).isin(box_strings)
             group_values = strain_data.loc[group_mask, value_column]
             
-            # Create violin plot
-            parts = ax.violinplot(group_values, positions=[list(results[strain]['groups'].keys()).index(group_name)],
-                                showmeans=True, showmedians=True)
-            
-            # Customize violin plot colors
-            for pc in parts['bodies']:
-                pc.set_facecolor('lightblue')
-                pc.set_alpha(0.7)
-            parts['cmeans'].set_color('red')
-            parts['cmedians'].set_color('white')
+            # Add to plot data
+            for val in group_values:
+                plot_data.append({
+                    'Group': group_name,
+                    'Weight': val
+                })
+        
+        plot_df = pd.DataFrame(plot_data)
+        
+        # Create violin plot with points
+        sns.violinplot(data=plot_df, x='Group', y='Weight', ax=ax, 
+                      inner='box', color='lightblue', alpha=0.7)
+        sns.stripplot(data=plot_df, x='Group', y='Weight', ax=ax,
+                     color='white', alpha=0.4, size=4, jitter=True)
         
         # Customize plot
-        ax.set_xticks(range(len(results[strain]['groups'])))
-        ax.set_xticklabels(results[strain]['groups'].keys())
         ax.set_title(f'{strain} Weight Distribution by Group')
         ax.set_ylabel('Weight')
         ax.grid(True, alpha=0.3)
@@ -63,12 +66,8 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     # Now create a combined plot
     fig_combined, ax_combined = plt.subplots(figsize=(12, 6))
     
-    # Calculate total number of groups and spacing
-    total_groups = sum(len(results[strain]['groups']) for strain in strains)
-    group_width = 0.8
-    strain_spacing = 2  # Space between strains
-    
-    # Plot each strain's groups
+    # Prepare data for combined plot
+    plot_data_combined = []
     current_position = 0
     all_positions = []
     all_labels = []
@@ -83,16 +82,14 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
             group_mask = strain_data[group_column].astype(str).isin(box_strings)
             group_values = strain_data.loc[group_mask, value_column]
             
-            # Create violin plot
-            parts = ax_combined.violinplot(group_values, positions=[current_position],
-                                         showmeans=True, showmedians=True)
-            
-            # Customize violin plot colors
-            for pc in parts['bodies']:
-                pc.set_facecolor(['lightblue', 'lightgreen'][strain_idx % 2])
-                pc.set_alpha(0.7)
-            parts['cmeans'].set_color('red')
-            parts['cmedians'].set_color('white')
+            # Add to plot data
+            for val in group_values:
+                plot_data_combined.append({
+                    'Position': current_position,
+                    'Weight': val,
+                    'Label': f"{strain}\n{group_name}",
+                    'Strain': strain_idx % 2  # For alternating colors
+                })
             
             all_positions.append(current_position)
             all_labels.append(f"{strain}\n{group_name}")
@@ -100,7 +97,19 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         
         # Add spacing between strains if not the last strain
         if strain_idx < len(strains) - 1:
-            current_position += strain_spacing
+            current_position += 2
+    
+    plot_df_combined = pd.DataFrame(plot_data_combined)
+    
+    # Create violin plot with points
+    for strain_type in [0, 1]:
+        strain_data = plot_df_combined[plot_df_combined['Strain'] == strain_type]
+        if not strain_data.empty:
+            sns.violinplot(data=strain_data, x='Position', y='Weight', ax=ax_combined,
+                          inner='box', color=['lightblue', 'lightgreen'][strain_type],
+                          alpha=0.7)
+            sns.stripplot(data=strain_data, x='Position', y='Weight', ax=ax_combined,
+                         color='white', alpha=0.4, size=4, jitter=True)
     
     # Customize combined plot
     ax_combined.set_xticks(all_positions)
