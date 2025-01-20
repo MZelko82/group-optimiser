@@ -29,7 +29,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     figs = []
     for strain in strains:
         # Create figure with transparent background
-        fig, ax = plt.subplots(figsize=(8, 6), facecolor='none')
+        fig, ax = plt.subplots(figsize=(12, 3), facecolor='none')  
         ax.set_facecolor('none')
         
         # Get data for this strain
@@ -69,18 +69,19 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         
         # Customize plot
         plot_title = f'{strain} {value_column} Distribution by Group' if strain_column else f'{value_column} Distribution by Group'
-        ax.set_title(plot_title, color='white')
+        ax.set_title(plot_title, color='white', pad=10)
         ax.set_xlabel(value_column, color='white')
         ax.grid(True, alpha=0.3)
         ax.tick_params(colors='white')
         for spine in ax.spines.values():
             spine.set_color('white')
         
+        plt.tight_layout()  
         figs.append(fig)
     
     # Only create combined plot if we have a strain column
     if strain_column is not None and len(strains) > 1:
-        fig_combined, ax_combined = plt.subplots(figsize=(12, 6), facecolor='none')
+        fig_combined, ax_combined = plt.subplots(figsize=(12, 4), facecolor='none')  
         ax_combined.set_facecolor('none')
         
         # Prepare data for combined plot
@@ -130,15 +131,14 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         ax_combined.set_yticks(range(len(all_labels)))
         ax_combined.set_yticklabels(all_labels, color='white')
         plot_title = f'Combined {value_column} Distribution by {strain_column} and Group'
-        ax_combined.set_title(plot_title, color='white')
+        ax_combined.set_title(plot_title, color='white', pad=10)
         ax_combined.set_xlabel(value_column, color='white')
         ax_combined.grid(True, alpha=0.3)
         ax_combined.tick_params(colors='white')
         for spine in ax_combined.spines.values():
             spine.set_color('white')
         
-        # Adjust layout to prevent label cutoff
-        plt.tight_layout()
+        plt.tight_layout()  
     else:
         fig_combined = None
     
@@ -377,57 +377,26 @@ def main():
                     # Show group summary
                     st.write("### Group Summary")
                     group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
-                        value_column: ['count', 'sum', 'mean'],
-                        group_column: lambda x: ', '.join(sorted(set(x.astype(str))))
-                    }).reset_index()
-                    group_summary.columns = ['Group', 'Subjects', 'Total Weight', 'Mean Weight', 'Boxes']
-                    st.dataframe(group_summary)
+                        value_column: ['count', 'mean', 'std']
+                    }).round(2)
                     
-                    # Show full allocation
-                    st.write("### Full Allocation")
-                    st.dataframe(st.session_state.output_df)
+                    st.write(group_summary)
                     
-                    # Display statistics in a table
-                    st.write("### Group Statistics")
-                    stats_data = []
-                    for strain, result in st.session_state.results.items():
-                        # Calculate standard deviation per group after allocation
-                        group_stdevs = {}
-                        for group_name in result['group_weights'].keys():
-                            group_mask = (st.session_state.output_df['Allocated_Group'] == group_name)
-                            if strain_column:
-                                group_mask &= (st.session_state.output_df[strain_column] == strain)
-                            group_values = st.session_state.output_df.loc[group_mask, value_column]
-                            group_stdevs[group_name] = float(np.std(group_values, ddof=1)) if len(group_values) > 1 else 0.0
-                        
-                        # Add group weights and calculated stats
-                        for group_name, total in result['group_weights'].items():
-                            stats_data.append({
-                                'Strain': strain,
-                                'Group': group_name,
-                                'Total Weight': f"{total:.1f}",
-                                'Std Dev': f"{group_stdevs[group_name]:.2f}",  # Per-group standard deviation
-                                'Max Difference': f"{result['max_difference']:.2f}"
-                            })
-                    
-                    stats_df = pd.DataFrame(stats_data)
-                    st.dataframe(stats_df)
-                    
-                    # Create plots last with smaller size
-                    st.write("### Weight Distributions")
-                    plot_results = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
+                    # Display plots
+                    st.write("### Optimized Distributions")
+                    plot_results = plot_group_distributions(df, st.session_state.results, 
+                                                             value_column, group_column, strain_column)
                     
                     if plot_results is not None:
                         strain_figs, combined_fig = plot_results
                         
                         if strain_figs:
-                            for fig in strain_figs:
-                                st.pyplot(fig)
-                            if combined_fig is not None:
-                                st.pyplot(combined_fig)
-                        
-                        # Show combined plot
-                        st.write("### Combined Weight Distribution")
+                            col1, col2, col3 = st.columns([1, 2, 1])
+                            with col2:
+                                for fig in strain_figs:
+                                    st.pyplot(fig)
+                                if combined_fig is not None:
+                                    st.pyplot(combined_fig)
                         
                     # Create a separate container for the download button
                     download_container = st.container()
