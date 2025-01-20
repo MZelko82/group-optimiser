@@ -30,8 +30,9 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     # First create individual strain plots
     figs = []
     for strain in strains:
-        # Create figure
-        fig, ax = plt.subplots(figsize=(8, 6))
+        # Create figure with transparent background
+        fig, ax = plt.subplots(figsize=(8, 6), facecolor='none')
+        ax.set_facecolor('none')
         
         # Get data for this strain
         strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
@@ -59,23 +60,28 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
             group_data = plot_df[plot_df['Group'] == group]
             color = colors[idx % len(colors)]
             
-            # Plot violin with transparency
+            # Plot violin with transparency and no statistics
             sns.violinplot(data=group_data, x='Weight', y='Group', ax=ax,
-                         inner='box', color=color, alpha=0.3, orient='h')
+                         inner=None, color=color, alpha=0.3, orient='h',
+                         saturation=1.0)
             
             # Plot points with same color
             sns.stripplot(data=group_data, x='Weight', y='Group', ax=ax,
                          color=color, alpha=0.5, size=4, jitter=True, orient='h')
         
         # Customize plot
-        ax.set_title(f'{strain} Weight Distribution by Group')
-        ax.set_xlabel('Weight')
+        ax.set_title(f'{strain} Weight Distribution by Group', color='white')
+        ax.set_xlabel('Weight', color='white')
         ax.grid(True, alpha=0.3)
+        ax.tick_params(colors='white')
+        for spine in ax.spines.values():
+            spine.set_color('white')
         
         figs.append(fig)
     
     # Now create a combined plot
-    fig_combined, ax_combined = plt.subplots(figsize=(12, 6))
+    fig_combined, ax_combined = plt.subplots(figsize=(12, 6), facecolor='none')
+    ax_combined.set_facecolor('none')
     
     # Prepare data for combined plot
     plot_data_combined = []
@@ -102,17 +108,16 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
             
             color = colors[(strain_color_offset + group_idx) % len(colors)]
             
-            # Create violin plot with transparency
+            # Create violin plot with transparency and no statistics
             if len(group_values) > 0:
                 violin_parts = ax_combined.violinplot(group_values, positions=[current_position],
-                                                    vert=False, showmeans=True, showmedians=True)
+                                                    vert=False, showmeans=False, showmedians=False,
+                                                    showextrema=False)
                 
                 # Style violin plot
                 for pc in violin_parts['bodies']:
                     pc.set_facecolor(color)
                     pc.set_alpha(0.3)
-                violin_parts['cmeans'].set_color(color)
-                violin_parts['cmedians'].set_color(color)
                 
                 # Add strip plot with same color
                 ax_combined.scatter(group_values, 
@@ -123,10 +128,13 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     # Customize combined plot
     ax_combined.set_yticks(range(len(all_labels)))
-    ax_combined.set_yticklabels(all_labels)
-    ax_combined.set_title('Combined Weight Distribution by Strain and Group')
-    ax_combined.set_xlabel('Weight')
+    ax_combined.set_yticklabels(all_labels, color='white')
+    ax_combined.set_title('Combined Weight Distribution by Strain and Group', color='white')
+    ax_combined.set_xlabel('Weight', color='white')
     ax_combined.grid(True, alpha=0.3)
+    ax_combined.tick_params(colors='white')
+    for spine in ax_combined.spines.values():
+        spine.set_color('white')
     
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
