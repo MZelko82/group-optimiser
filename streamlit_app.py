@@ -141,6 +141,73 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     return figs, fig_combined
 
+def plot_initial_distribution(df, value_column, strain_column=None):
+    """Plot initial weight distribution for the full dataset and by strain."""
+    plt.style.use('dark_background')
+    colors = ['#89A8B2', '#F1F0E8',  # Primary palette alternating first/last
+             '#F0A8D0', '#FFEBD4']   # Secondary palette alternating first/last
+    
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor='none')
+    ax.set_facecolor('none')
+    
+    # Prepare data for plotting
+    plot_data = []
+    
+    # Add full dataset
+    plot_data.append({
+        'label': 'Full Dataset',
+        'values': df[value_column],
+        'position': 0,
+        'color': colors[0]
+    })
+    
+    # Add strain-specific data if strain column is provided
+    if strain_column is not None:
+        for i, strain in enumerate(sorted(df[strain_column].unique())):
+            strain_data = df[df[strain_column] == strain][value_column]
+            plot_data.append({
+                'label': strain,
+                'values': strain_data,
+                'position': i + 1,
+                'color': colors[(i + 1) % len(colors)]
+            })
+    
+    # Create violin plots with points
+    positions = []
+    labels = []
+    for data in plot_data:
+        pos = data['position']
+        positions.append(pos)
+        labels.append(data['label'])
+        
+        # Create violin plot
+        violin_parts = ax.violinplot(data['values'], positions=[pos],
+                                   vert=False, showmeans=False, showmedians=False,
+                                   showextrema=False)
+        
+        # Style violin plot
+        for pc in violin_parts['bodies']:
+            pc.set_facecolor(data['color'])
+            pc.set_alpha(0.3)
+        
+        # Add strip plot
+        ax.scatter(data['values'],
+                  [pos + (np.random.random(len(data['values'])) - 0.5) * 0.1],
+                  alpha=0.5, color=data['color'], s=20)
+    
+    # Customize plot
+    ax.set_yticks(positions)
+    ax.set_yticklabels(labels, color='white')
+    ax.set_title('Initial Weight Distribution', color='white')
+    ax.set_xlabel('Weight', color='white')
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(colors='white')
+    for spine in ax.spines.values():
+        spine.set_color('white')
+    
+    plt.tight_layout()
+    return fig
+
 def main():
     st.set_page_config(page_title="Group Optimizer", layout="wide")
     st.title("Group Allocation Optimizer")
@@ -299,6 +366,11 @@ def main():
                 
                 # Display results if optimization was successful
                 if st.session_state.optimization_run:
+                    # Show initial distribution
+                    st.write("### Initial Distribution")
+                    initial_fig = plot_initial_distribution(df, value_column, strain_column)
+                    st.pyplot(initial_fig)
+                    
                     # Show group summary
                     st.write("### Group Summary")
                     group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
