@@ -174,40 +174,32 @@ def main():
                 st.write("### Data Preview")
                 st.dataframe(df.head())
                 
-                # Column selection
-                numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-                if not numeric_columns:
-                    st.error("No numeric columns found in the data!")
-                    st.stop()
-                    
-                col1, col2 = st.columns(2)
+                # Get available columns for selection
+                columns = list(df.columns)
                 
-                # Show column names for reference
-                st.write("Available columns:", df.columns.tolist())
+                # Create three columns for the dropdowns
+                st.markdown("### Select Columns for Optimization")
                 
+                # Column to optimize
+                st.markdown("##### Which column should be optimized for even distribution?")
+                col1, col2, col3 = st.columns(3)
                 with col1:
-                    value_column = st.selectbox(
-                        "Select the column to optimize groups on (numeric values):",
-                        options=numeric_columns,
-                        format_func=lambda x: f"{x} (numeric)"
-                    )
+                    value_column = st.selectbox("", df.select_dtypes(include=[np.number]).columns.tolist(), key='optimize')
                 
+                # Column for keeping subjects together
+                st.markdown("##### Which column indicates box-mates that should stay together?")
                 with col2:
-                    group_column = st.selectbox(
-                        "Select the column that identifies which items must stay together:",
-                        options=df.columns.tolist(),
-                        format_func=lambda x: f"{x} ({df[x].dtype})"
-                    )
+                    group_column = st.selectbox("", df.columns.tolist(), key='stay_together')
                 
-                strain_column = None
-                if len(df.columns) > 2:  # If there are more columns, allow strain selection
-                    strain_column = st.selectbox(
-                        "Optional: Select a column to separate optimizations by (e.g., strain/type):",
-                        options=['None'] + df.columns.tolist(),
-                        format_func=lambda x: x if x == 'None' else f"{x} ({df[x].dtype})"
-                    )
-                    if strain_column == 'None':
-                        strain_column = None
+                # Optional strain column
+                st.markdown("##### Which column indicates strain? (Optional)")
+                with col3:
+                    strain_column = st.selectbox("", ['None'] + df.columns.tolist(), key='strain')
+                    strain_column = None if strain_column == 'None' else strain_column
+                
+                # Display available columns for reference
+                st.markdown("#### Available Columns:")
+                st.write(", ".join(columns))
                 
                 # Group configuration
                 st.write("### Group Configuration")
