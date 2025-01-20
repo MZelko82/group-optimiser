@@ -15,8 +15,9 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     if results is None:
         return None
     
-    # Set style
+    # Set style and color palette
     plt.style.use('dark_background')
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']  # Distinct colors
     
     # Create separate plots for each strain
     strains = list(results.keys())
@@ -50,15 +51,16 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         
         plot_df = pd.DataFrame(plot_data)
         
-        # Create violin plot with points
-        sns.violinplot(data=plot_df, x='Group', y='Weight', ax=ax, 
-                      inner='box', color='lightblue', alpha=0.7)
-        sns.stripplot(data=plot_df, x='Group', y='Weight', ax=ax,
-                     color='white', alpha=0.4, size=4, jitter=True)
+        # Create horizontal violin plot with points
+        sns.violinplot(data=plot_df, x='Weight', y='Group', ax=ax, 
+                      inner='box', palette=colors[:len(plot_df['Group'].unique())],
+                      alpha=0.7, orient='h')
+        sns.stripplot(data=plot_df, x='Weight', y='Group', ax=ax,
+                     color='white', alpha=0.4, size=4, jitter=True, orient='h')
         
         # Customize plot
         ax.set_title(f'{strain} Weight Distribution by Group')
-        ax.set_ylabel('Weight')
+        ax.set_xlabel('Weight')
         ax.grid(True, alpha=0.3)
         
         figs.append(fig)
@@ -74,9 +76,10 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     for strain_idx, strain in enumerate(strains):
         strain_data = df[df[strain_column] == strain] if strain_column else df
+        strain_color_offset = strain_idx * 2  # Offset colors for each strain
         
         # Plot each group in this strain
-        for group_name in results[strain]['groups'].keys():
+        for group_idx, group_name in enumerate(results[strain]['groups'].keys()):
             # Get boxes for this group
             box_strings = [str(b) for b in results[strain]['groups'][group_name]]
             group_mask = strain_data[group_column].astype(str).isin(box_strings)
@@ -88,7 +91,7 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
                     'Position': current_position,
                     'Weight': val,
                     'Label': f"{strain}\n{group_name}",
-                    'Strain': strain_idx % 2  # For alternating colors
+                    'Color': strain_color_offset + group_idx  # Unique color for each group
                 })
             
             all_positions.append(current_position)
@@ -101,21 +104,22 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
     
     plot_df_combined = pd.DataFrame(plot_data_combined)
     
-    # Create violin plot with points
-    for strain_type in [0, 1]:
-        strain_data = plot_df_combined[plot_df_combined['Strain'] == strain_type]
-        if not strain_data.empty:
-            sns.violinplot(data=strain_data, x='Position', y='Weight', ax=ax_combined,
-                          inner='box', color=['lightblue', 'lightgreen'][strain_type],
-                          alpha=0.7)
-            sns.stripplot(data=strain_data, x='Position', y='Weight', ax=ax_combined,
-                         color='white', alpha=0.4, size=4, jitter=True)
+    # Create horizontal violin plot with points
+    unique_colors = plot_df_combined['Color'].unique()
+    for color_idx in unique_colors:
+        color_data = plot_df_combined[plot_df_combined['Color'] == color_idx]
+        if not color_data.empty:
+            sns.violinplot(data=color_data, x='Weight', y='Position', ax=ax_combined,
+                          inner='box', color=colors[int(color_idx % len(colors))],
+                          alpha=0.7, orient='h')
+            sns.stripplot(data=color_data, x='Weight', y='Position', ax=ax_combined,
+                         color='white', alpha=0.4, size=4, jitter=True, orient='h')
     
     # Customize combined plot
-    ax_combined.set_xticks(all_positions)
-    ax_combined.set_xticklabels(all_labels, rotation=45)
+    ax_combined.set_yticks(all_positions)
+    ax_combined.set_yticklabels(all_labels)
     ax_combined.set_title('Combined Weight Distribution by Strain and Group')
-    ax_combined.set_ylabel('Weight')
+    ax_combined.set_xlabel('Weight')
     ax_combined.grid(True, alpha=0.3)
     
     # Adjust layout to prevent label cutoff
