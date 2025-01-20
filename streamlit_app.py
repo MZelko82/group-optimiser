@@ -185,11 +185,11 @@ def main():
                 value_column = st.selectbox("", df.select_dtypes(include=[np.number]).columns.tolist(), key='optimize')
                 
                 # Column for keeping subjects together
-                st.markdown("##### Which column indicates box-mates that should stay together?")
+                st.markdown("##### Which column indicates which animals should remain in the same group (Box, cage etc)?")
                 group_column = st.selectbox("", df.columns.tolist(), key='stay_together')
                 
                 # Optional strain column
-                st.markdown("##### Which column indicates strain? (Optional)")
+                st.markdown("##### Which column indicates the grouping variable (Strain, Age etc) prior to experimental group allocation?")
                 strain_column = st.selectbox("", ['None'] + df.columns.tolist(), key='strain')
                 strain_column = None if strain_column == 'None' else strain_column
                 
