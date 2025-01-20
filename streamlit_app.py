@@ -35,7 +35,9 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         
         # Plot groups
         for group_name in results[strain]['groups'].keys():
-            group_mask = strain_data['Allocated_Group'] == group_name
+            # Get boxes for this group
+            box_strings = [str(b) for b in results[strain]['groups'][group_name]]
+            group_mask = strain_data[group_column].astype(str).isin(box_strings)
             group_values = strain_data.loc[group_mask, value_column]
             
             # Create violin plot
@@ -76,7 +78,9 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         
         # Plot each group in this strain
         for group_name in results[strain]['groups'].keys():
-            group_mask = strain_data['Allocated_Group'] == group_name
+            # Get boxes for this group
+            box_strings = [str(b) for b in results[strain]['groups'][group_name]]
+            group_mask = strain_data[group_column].astype(str).isin(box_strings)
             group_values = strain_data.loc[group_mask, value_column]
             
             # Create violin plot
