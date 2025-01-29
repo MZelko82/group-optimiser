@@ -304,6 +304,10 @@ def main():
             st.markdown("##### Which column indicates which animals should remain in the same group (Box, cage etc)?")
             group_column = st.selectbox("", df.columns.tolist(), key='stay_together')
             
+            # Check if the selected group column has unique values for each row
+            if df[group_column].nunique() == len(df):
+                st.warning("⚠️ The selected grouping column has a unique value for each row. This means each animal will be treated as its own group. If you want to keep multiple animals together, please select a column where some values are shared between rows (like Box or Cage numbers).")
+            
             # Optional strain column
             st.markdown("##### Which column indicates the grouping variable (Strain, Age etc) prior to experimental group allocation?")
             strain_column = st.selectbox("", ['None'] + df.columns.tolist(), key='strain')
