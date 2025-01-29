@@ -21,16 +21,22 @@ st.markdown("""
     }
     .example-table table {
         border-color: white !important;
+        width: auto !important;
     }
     .example-table th {
         background-color: transparent !important;
         color: white !important;
         border-color: white !important;
+        padding: 5px 15px !important;
+        min-width: 50px !important;
     }
     .example-table td {
         background-color: transparent !important;
         color: white !important;
         border-color: white !important;
+        padding: 5px 15px !important;
+        min-width: 50px !important;
+        white-space: nowrap !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -252,7 +258,7 @@ def main():
     try:
         example_df = pd.read_csv('example_data.csv')
         st.markdown('<div class="example-table">', unsafe_allow_html=True)
-        st.table(example_df.head())
+        st.table(example_df.head().set_index('ID'))  # Set ID as index to hide it
         st.markdown('</div>', unsafe_allow_html=True)
     except Exception as e:
         st.warning("Example data file not found. Please ensure example_data.csv is in the same directory.")
