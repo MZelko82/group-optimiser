@@ -5,7 +5,8 @@ A web application for optimising experimental group allocations while maintainin
 ## Primary Access
 
 The app is hosted on Streamlit Cloud and can be accessed at:
-[https://anxious-rats.streamlit.app](https://anxious-rats.streamlit.app)
+
+[https://group-optimiser-wcc2dtwleonkb38i3vyxfu.streamlit.app/](https://group-optimiser-wcc2dtwleonkb38i3vyxfu.streamlit.app/)
 
 ## Features
 
