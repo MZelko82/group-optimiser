@@ -10,6 +10,40 @@ from scipy.stats import gaussian_kde
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
+# Create example data for the preview table
+example_data = {
+    'Name': ['John Smith', 'Jane Doe', '...'],
+    'Group Size': [4, 3, '...'],
+    'Preference 1': ['Project A', 'Project B', '...'],
+    'Preference 2': ['Project B', 'Project D', '...'],
+    'Preference 3': ['Project C', 'Project A', '...']
+}
+
+# Create and display the preview table with custom styling
+st.markdown("### Example CSV Structure")
+st.markdown("""
+    <style>
+    .stDataFrame {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+    }
+    .stDataFrame table {
+        border-collapse: collapse;
+    }
+    .stDataFrame th {
+        background-color: rgba(255, 255, 255, 0.15) !important;
+        color: white !important;
+        font-weight: 500 !important;
+    }
+    .stDataFrame td {
+        color: white !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+preview_df = pd.DataFrame(example_data)
+st.dataframe(preview_df, hide_index=True)
+
 def plot_group_distributions(df, results, value_column, group_column, strain_column=None):
     """Plot weight distributions for each group, separated by strain."""
     if results is None:
