@@ -10,6 +10,28 @@ from scipy.stats import gaussian_kde
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
+# Custom CSS for table styling
+st.markdown("""
+<style>
+    .example-table {
+        background-color: transparent !important;
+    }
+    .example-table table {
+        border-color: white !important;
+    }
+    .example-table th {
+        background-color: transparent !important;
+        color: white !important;
+        border-color: white !important;
+    }
+    .example-table td {
+        background-color: transparent !important;
+        color: white !important;
+        border-color: white !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def plot_group_distributions(df, results, value_column, group_column, strain_column=None):
     """Plot weight distributions for each group, separated by strain."""
     if results is None:
@@ -222,6 +244,16 @@ def main():
         st.session_state.results = None
     if 'output_df' not in st.session_state:
         st.session_state.output_df = None
+    
+    # Show example data preview
+    st.markdown("### Example Data Format")
+    try:
+        example_df = pd.read_csv('example_data.csv')
+        st.markdown('<div class="example-table">', unsafe_allow_html=True)
+        st.table(example_df.head())
+        st.markdown('</div>', unsafe_allow_html=True)
+    except Exception as e:
+        st.warning("Example data file not found. Please ensure example_data.csv is in the same directory.")
     
     # File uploader
     uploaded_file = st.file_uploader("Upload a CSV file", type=['csv'])
