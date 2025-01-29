@@ -18,10 +18,19 @@ st.markdown("""
 <style>
     .example-table {
         background-color: transparent !important;
+        max-width: fit-content !important;
+        margin: 0 !important;
     }
     .example-table table {
         border-color: white !important;
-        width: auto !important;
+        width: fit-content !important;
+        margin: 0 !important;
+    }
+    .example-table thead tr th:first-child {
+        display: none !important;
+    }
+    .example-table tbody tr td:first-child {
+        display: none !important;
     }
     .example-table th {
         background-color: transparent !important;
@@ -29,6 +38,7 @@ st.markdown("""
         border-color: white !important;
         padding: 5px 15px !important;
         min-width: 50px !important;
+        text-align: left !important;
     }
     .example-table td {
         background-color: transparent !important;
@@ -37,6 +47,7 @@ st.markdown("""
         padding: 5px 15px !important;
         min-width: 50px !important;
         white-space: nowrap !important;
+        text-align: left !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -258,7 +269,7 @@ def main():
     try:
         example_df = pd.read_csv('example_data.csv')
         st.markdown('<div class="example-table">', unsafe_allow_html=True)
-        st.table(example_df.head().set_index('ID'))  # Set ID as index to hide it
+        st.table(example_df.head())  # Display all columns, CSS will hide the index
         st.markdown('</div>', unsafe_allow_html=True)
     except Exception as e:
         st.warning("Example data file not found. Please ensure example_data.csv is in the same directory.")
