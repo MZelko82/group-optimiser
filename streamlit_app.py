@@ -7,6 +7,9 @@ import seaborn as sns
 from io import BytesIO
 from scipy.stats import gaussian_kde
 
+# Set page config first
+st.set_page_config(page_title="Group Optimizer", layout="wide")
+
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
 
@@ -234,7 +237,6 @@ def plot_initial_distribution(df, value_column, strain_column=None):
     return fig
 
 def main():
-    st.set_page_config(page_title="Group Optimizer", layout="wide")
     st.title("Group Allocation Optimizer")
     
     # Initialize session state variables
