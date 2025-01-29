@@ -262,8 +262,8 @@ def main():
     try:
         # Read and prepare example data
         example_df = pd.read_csv('example_data.csv')
-        # Select only the columns we want to display
-        display_df = example_df[['Box', 'Strain', 'Weight']].copy()
+        # Select columns in desired order
+        display_df = example_df[['ID', 'Box', 'Strain', 'Weight']].copy()
         
         # Create a styled dataframe
         styled_df = display_df.style.set_properties(**{
