@@ -279,6 +279,9 @@ def main():
             use_container_width=False
         )
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Add link to strain example CSV
+        st.markdown('[Download strain example csv](https://github.com/MZelko82/group-optimiser/blob/main/example_data2.csv)')
     except Exception as e:
         st.warning("Example data file not found. Please ensure example_data.csv is in the same directory.")
     
