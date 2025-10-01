@@ -470,15 +470,37 @@ def main():
                             for group, boxes in result['groups'].items():
                                 st.write(f"Assigning group {group} with boxes {boxes}")
                                 box_strings = [str(b) for b in boxes]
-                                strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+                                
+                                # Handle the new weighted optimization structure
+                                if strain in ['Combined', 'Group']:
+                                    # For weighted optimization, don't filter by strain
+                                    strain_mask = pd.Series(True, index=df.index)
+                                else:
+                                    # For old optimization, filter by strain
+                                    strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+                                
                                 mask = strain_mask & df[group_column].astype(str).isin(box_strings)
                                 st.session_state.output_df.loc[mask, 'Allocated_Group'] = group
                                 assigned_boxes.update(box_strings)
+                                
+                                # Debug: Check how many animals were assigned
+                                assigned_count = mask.sum()
+                                st.write(f"  → Assigned {assigned_count} animals to {group}")
                         
                         # Check for unassigned boxes
                         unassigned = all_boxes - assigned_boxes
                         if unassigned:
                             st.warning(f"Warning: Some boxes were not assigned to any group: {unassigned}")
+                        
+                        # Debug: Check final state of Allocated_Group column
+                        assigned_animals = st.session_state.output_df['Allocated_Group'].notna().sum()
+                        total_animals = len(st.session_state.output_df)
+                        st.write(f"Final assignment: {assigned_animals}/{total_animals} animals assigned to groups")
+                        
+                        # Show sample of assignments
+                        sample_assignments = st.session_state.output_df[['Rat ID', 'Rat Box', 'Allocated_Group']].head(10)
+                        st.write("Sample assignments:")
+                        st.write(sample_assignments)
                         
                         st.session_state.optimization_run = True
                 
