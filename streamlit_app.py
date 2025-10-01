@@ -498,7 +498,10 @@ def main():
                         st.write(f"Final assignment: {assigned_animals}/{total_animals} animals assigned to groups")
                         
                         # Show sample of assignments
-                        sample_assignments = st.session_state.output_df[['Rat ID', 'Rat Box', 'Allocated_Group']].head(10)
+                        # Use the actual column names from user selections
+                        id_column = 'ID' if 'ID' in df.columns else df.columns[0]  # Use first column as ID if no ID column
+                        sample_columns = [id_column, group_column, 'Allocated_Group']
+                        sample_assignments = st.session_state.output_df[sample_columns].head(10)
                         st.write("Sample assignments:")
                         st.write(sample_assignments)
                         
