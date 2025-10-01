@@ -9,8 +9,10 @@ from pulp import *
 
 def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: str = None) -> pd.DataFrame:
     """
-    Calculate box weights and subject counts.
-    Returns DataFrame with columns matching the input column names plus weight and subjects_per_box.
+    Calculate box weights and subject counts with proper constraint handling.
+    
+    Key change: Groups by physical box first to maintain box integrity,
+    then tracks strain composition for stratified optimization.
     """
     print(f"\nCalculating box weights:")
     print(f"Value column: {value_col}")
@@ -31,21 +33,34 @@ def get_box_weights(df: pd.DataFrame, value_col: str, box_col: str, strain_col: 
     # Convert box numbers to strings for consistent handling
     df[box_col] = df[box_col].astype(str)
     
-    # Group by box and optionally strain
-    if strain_col:
-        print(f"\nProcessing by strain. Unique strains: {df[strain_col].unique()}")
-        group_cols = [box_col, strain_col]
-    else:
-        print("\nNo strain column specified, processing all data together")
-        group_cols = [box_col]
-        df['strain'] = 'Group'
-        strain_col = 'strain'
+    # HARD CONSTRAINT: Always group by physical box first
+    print(f"\nGrouping by physical box first to maintain box integrity")
     
-    # Calculate weights and counts using named aggregations
-    box_data = df.groupby(group_cols).agg(
-        weight=(value_col, 'sum'),
-        subjects_per_box=(box_col, 'size')
+    # Calculate box-level aggregations (this ensures box integrity)
+    box_data = df.groupby(box_col).agg(
+        weight=(value_col, 'sum'),  # Total weight for the entire box
+        subjects_per_box=(box_col, 'size')  # Total subjects in the box
     ).reset_index()
+    
+    # If strain column is provided, add strain composition information
+    if strain_col:
+        print(f"\nAdding strain composition for stratified optimization")
+        print(f"Unique strains: {df[strain_col].unique()}")
+        
+        # Get strain composition for each box
+        strain_composition = df.groupby([box_col, strain_col]).size().unstack(fill_value=0)
+        
+        # Add strain columns to box_data
+        for strain in strain_composition.columns:
+            box_data[f'strain_{strain}'] = box_data[box_col].map(strain_composition[strain])
+        
+        # Add total strain columns for reference
+        box_data['total_strains'] = strain_composition.sum(axis=1)[box_data[box_col]].values
+    else:
+        # No strain column - treat as single group
+        print("\nNo strain column specified, processing all data together")
+        box_data['strain_Group'] = box_data['subjects_per_box']
+        box_data['total_strains'] = 1
     
     print("\nBox weights data:")
     print(box_data)
@@ -209,54 +224,138 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Results: {results}")
     return results
 
-def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None) -> Dict:
+def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None, weight_penalty: float = 1.0, strain_penalty: float = 0.1) -> Dict:
     """
-    Find optimal allocation of boxes to n groups, optionally separated by strain.
-    Returns a dictionary with results for each strain.
-    """
-    print(f"\nFinding optimal allocation for {n_groups} groups")
-    print(f"Group names: {group_names}")
+    Find optimal allocation using weighted objective function.
     
-    if strain_col is None:
-        strain_col = 'strain'
-        box_weights['strain'] = 'Group'
+    Hard constraint: Box integrity (boxes stay together)
+    Primary objective: Minimize weight imbalance (penalty = weight_penalty)
+    Secondary objective: Minimize strain imbalance (penalty = strain_penalty)
+    """
+    print(f"\nFinding optimal allocation for {n_groups} groups using weighted objective")
+    print(f"Group names: {group_names}")
+    print(f"Weight penalty: {weight_penalty}, Strain penalty: {strain_penalty}")
     
     # Get the box column name (first column)
     box_col = box_weights.columns[0]
     
-    results = {}
+    # Extract box information
+    boxes = box_weights[box_col].astype(str).tolist()
+    values = dict(zip(box_weights[box_col].astype(str), box_weights['weight']))
+    subjects_per_box = dict(zip(box_weights[box_col].astype(str), box_weights['subjects_per_box']))
     
-    # Process each strain separately
-    for strain in box_weights[strain_col].unique():
-        print(f"\nProcessing strain: {strain}")
-        
-        # Get data for this strain
-        strain_data = box_weights[box_weights[strain_col] == strain]
-        if strain_data.empty:
-            print(f"No data found for strain {strain}")
-            continue
-        
-        # Extract values for optimization
-        boxes = strain_data[box_col].astype(str).tolist()
-        values = dict(zip(strain_data[box_col].astype(str), strain_data['weight']))
-        subjects_per_box = dict(zip(strain_data[box_col].astype(str), strain_data['subjects_per_box']))
-        
-        print(f"Boxes for strain {strain}: {boxes}")
-        print(f"Values: {values}")
-        print(f"Subjects per box: {subjects_per_box}")
-        
-        try:
-            # Find optimal allocation for this strain
-            strain_results = find_optimal_allocation_ilp(boxes, values, n_groups, group_names, subjects_per_box)
-            results[strain] = strain_results
-        except Exception as e:
-            print(f"Error optimizing allocation for strain {strain}: {str(e)}")
-            raise ValueError(f"Strain '{strain}' optimization failed: {str(e)}")
+    print(f"Boxes: {boxes}")
+    print(f"Values: {values}")
+    print(f"Subjects per box: {subjects_per_box}")
     
-    if not results:
-        raise ValueError("No valid results found for any strain")
+    # Set up ILP problem
+    prob = LpProblem("WeightedGroupAllocation", LpMinimize)
     
+    # Decision variables: x[i,j] = 1 if box i is assigned to group j
+    x = LpVariable.dicts("assign",
+                        ((box, group) for box in boxes for group in group_names),
+                        cat='Binary')
+    
+    # Variables for tracking imbalances
+    max_weight = LpVariable("max_weight", lowBound=0)
+    min_weight = LpVariable("min_weight", lowBound=0)
+    
+    # Strain imbalance variables (if strain composition exists)
+    strain_vars = {}
+    if strain_col:
+        # Find strain columns
+        strain_columns = [col for col in box_weights.columns if col.startswith('strain_')]
+        print(f"Strain columns found: {strain_columns}")
+        
+        for strain_col_name in strain_columns:
+            strain_name = strain_col_name.replace('strain_', '')
+            max_strain = LpVariable(f"max_strain_{strain_name}", lowBound=0)
+            min_strain = LpVariable(f"min_strain_{strain_name}", lowBound=0)
+            strain_vars[strain_name] = {'max': max_strain, 'min': min_strain}
+    
+    # Objective: Minimize weighted combination of imbalances
+    objective = (weight_penalty * (max_weight - min_weight))
+    
+    if strain_vars:
+        for strain_name, vars in strain_vars.items():
+            objective += strain_penalty * (vars['max'] - vars['min'])
+    
+    prob += objective
+    
+    # Hard constraint: Each box must be assigned to exactly one group
+    for box in boxes:
+        prob += lpSum(x[box, group] for group in group_names) == 1
+    
+    # Weight balance constraints
+    for group in group_names:
+        group_weight = lpSum(values[box] * x[box, group] for box in boxes)
+        prob += group_weight <= max_weight
+        prob += group_weight >= min_weight
+    
+    # Strain balance constraints (if applicable)
+    if strain_vars:
+        for strain_name, vars in strain_vars.items():
+            strain_col_name = f'strain_{strain_name}'
+            if strain_col_name in box_weights.columns:
+                for group in group_names:
+                    group_strain_count = lpSum(box_weights.set_index(box_col).loc[box, strain_col_name] * x[box, group] for box in boxes)
+                    prob += group_strain_count <= vars['max']
+                    prob += group_strain_count >= vars['min']
+    
+    # Subject count balance constraints (flexible)
+    total_subjects = sum(subjects_per_box.values())
+    target_per_group = total_subjects // n_groups
+    min_allowed = max(1, target_per_group - 2)
+    max_allowed = target_per_group + 2
+    
+    for group in group_names:
+        group_subjects = lpSum(subjects_per_box[box] * x[box, group] for box in boxes)
+        prob += group_subjects >= min_allowed
+        prob += group_subjects <= max_allowed
+    
+    # Solve
+    print(f"\nSolving weighted optimization...")
+    status = prob.solve(PULP_CBC_CMD(msg=False))
+    print(f"Status: {LpStatus[prob.status]}")
+    
+    if LpStatus[prob.status] != 'Optimal':
+        raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}")
+    
+    # Extract results
+    allocation = {group: [] for group in group_names}
+    final_weights = {group: 0 for group in group_names}
+    final_subjects = {group: 0 for group in group_names}
+    
+    for box in boxes:
+        for group in group_names:
+            if value(x[box, group]) > 0.5:
+                allocation[group].append(box)
+                final_weights[group] += values[box]
+                final_subjects[group] += subjects_per_box[box]
+                break
+    
+    # Calculate statistics
+    weights = list(final_weights.values())
+    std_dev = float(np.std(weights, ddof=1)) if len(weights) > 1 else 0.0
+    
+    results = {
+        'groups': allocation,
+        'group_weights': final_weights,
+        'group_subjects': final_subjects,
+        'std_dev': std_dev,
+        'max_difference': float(max(weights) - min(weights)) if weights else 0.0
+    }
+    
+    print(f"\nOptimization complete!")
+    print(f"Results: {results}")
     return results
+
+def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None) -> Dict:
+    """
+    Wrapper function that calls the new weighted optimization.
+    Maintains backward compatibility.
+    """
+    return find_optimal_allocation_weighted(box_weights, n_groups, group_names, strain_col)
 
 def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
     """Create combined density and scatter plots for each strain and group."""

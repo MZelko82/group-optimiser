@@ -41,3 +41,11 @@ Thumbs.db
 # Local development
 *.log
 .env
+
+# Project planning and documentation
+plan.qmd
+example_data3.csv
+test_constraint_debug.py
+test_streamlit_exact_workflow.py
+test_streamlit_workflow.py
+test_weighted_optimization.py
