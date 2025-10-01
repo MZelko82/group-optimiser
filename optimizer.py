@@ -353,9 +353,20 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
 def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None) -> Dict:
     """
     Wrapper function that calls the new weighted optimization.
-    Maintains backward compatibility.
+    Maintains backward compatibility with old data structure.
     """
-    return find_optimal_allocation_weighted(box_weights, n_groups, group_names, strain_col)
+    # Call the new weighted optimization
+    result = find_optimal_allocation_weighted(box_weights, n_groups, group_names, strain_col)
+    
+    # Convert to old format for backward compatibility
+    if strain_col:
+        # For backward compatibility, wrap in strain structure
+        # Since we now handle all strains in one optimization, we need to create a dummy strain key
+        strain_name = 'Combined'  # Or use the first strain found in the data
+        return {strain_name: result}
+    else:
+        # No strain column - return as single group
+        return {'Group': result}
 
 def plot_group_distributions(df, results, value_col='Weight', strain_col=None):
     """Create combined density and scatter plots for each strain and group."""

@@ -49,3 +49,5 @@ test_constraint_debug.py
 test_streamlit_exact_workflow.py
 test_streamlit_workflow.py
 test_weighted_optimization.py
+
+testing/
