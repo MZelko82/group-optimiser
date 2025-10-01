@@ -67,9 +67,14 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         fig, ax = plt.subplots(figsize=(12, 5), facecolor='none')
         ax.set_facecolor('none')
         
-        # Get data for this strain
-        strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
-        strain_data = df[strain_mask]
+        # Handle the new weighted optimization structure
+        if strain in ['Combined', 'Group']:
+            # For weighted optimization, use all data (no strain filtering)
+            strain_data = df
+        else:
+            # For old optimization, filter by strain
+            strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+            strain_data = df[strain_mask]
         
         # Prepare data for plotting
         plot_data = []
@@ -133,7 +138,11 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
         # Now plot in reverse order to match the labels
         current_position = len(all_positions) - 1
         for strain_idx, strain in enumerate(reversed(strains)):
-            strain_data = df[df[strain_column] == strain] if strain_column else df
+            # Handle the new weighted optimization structure
+            if strain in ['Combined', 'Group']:
+                strain_data = df  # Use all data for weighted optimization
+            else:
+                strain_data = df[df[strain_column] == strain] if strain_column else df
             strain_color_offset = strain_idx * 2
             
             for group_idx, group_name in enumerate(reversed(list(results[strain]['groups'].keys()))):
@@ -242,6 +251,72 @@ def plot_initial_distribution(df, value_column, strain_column=None):
     ax.tick_params(colors='white')
     for spine in ax.spines.values():
         spine.set_color('white')
+    
+    plt.tight_layout()
+    return fig
+
+def create_birthdate_plot(df, value_column, strain_column):
+    """Create a plot showing birthdate distribution within each group."""
+    plt.style.use('dark_background')
+    colors = ['#89A8B2', '#F1F0E8', '#F0A8D0', '#FFEBD4']
+    
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor='none')
+    ax.set_facecolor('none')
+    
+    # Get unique birthdates and groups
+    birthdates = sorted(df[strain_column].unique())
+    groups = sorted(df['Allocated_Group'].unique())
+    
+    # Create position mapping
+    x_positions = []
+    labels = []
+    colors_list = []
+    
+    position = 0
+    for group in groups:
+        for birthdate in birthdates:
+            # Get data for this group and birthdate combination
+            group_birthdate_data = df[(df['Allocated_Group'] == group) & (df[strain_column] == birthdate)]
+            
+            if len(group_birthdate_data) > 0:
+                values = group_birthdate_data[value_column]
+                
+                # Create violin plot
+                violin_parts = ax.violinplot(values, positions=[position],
+                                           vert=False, showmeans=False, showmedians=False,
+                                           showextrema=False)
+                
+                # Style violin plot
+                color_idx = groups.index(group) % len(colors)
+                for pc in violin_parts['bodies']:
+                    pc.set_facecolor(colors[color_idx])
+                    pc.set_alpha(0.3)
+                
+                # Add scatter plot
+                ax.scatter(values, [position + (np.random.random(len(values)) - 0.5) * 0.1],
+                          alpha=0.6, color=colors[color_idx], s=20)
+                
+                x_positions.append(position)
+                labels.append(f"{group}\n{birthdate}")
+                colors_list.append(colors[color_idx])
+                
+                position += 1
+    
+    # Customize plot
+    ax.set_yticks(x_positions)
+    ax.set_yticklabels(labels, color='white')
+    ax.set_title(f'{value_column} Distribution by Group and {strain_column}', color='white', pad=10)
+    ax.set_xlabel(value_column, color='white')
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(colors='white')
+    for spine in ax.spines.values():
+        spine.set_color('white')
+    
+    # Add legend
+    group_handles = []
+    for i, group in enumerate(groups):
+        group_handles.append(plt.Rectangle((0,0),1,1, facecolor=colors[i % len(colors)], alpha=0.7))
+    ax.legend(group_handles, groups, loc='upper right', title='Groups')
     
     plt.tight_layout()
     return fig
@@ -417,33 +492,40 @@ def main():
                 initial_fig = plot_initial_distribution(df, value_column, strain_column)
                 st.pyplot(initial_fig)
                 
-                # Show group summary
-                st.write("### Group Summary")
-                if strain_column:
-                    # Group by strain and allocated group
-                    group_summary = st.session_state.output_df.groupby([strain_column, 'Allocated_Group']).agg({
-                        value_column: ['count', 'mean', 'std']
-                    }).round(2)
-                else:
-                    # Just group by allocated group
-                    group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
-                        value_column: ['count', 'mean', 'std']
-                    }).round(2)
+                # Check if we're using the new weighted optimization
+                is_weighted_optimization = strain_column and 'Combined' in st.session_state.results.keys()
                 
+                # 1. Group Summary and Plot
+                st.write("### Group Summary")
+                group_summary = st.session_state.output_df.groupby('Allocated_Group').agg({
+                    value_column: ['count', 'mean', 'std']
+                }).round(2)
                 st.write(group_summary)
                 
-                # Display plots
-                st.write("### Optimized Distributions")
-                plot_results = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
+                st.write("### Group Distribution Plot")
+                group_plot_results = plot_group_distributions(df, st.session_state.results, value_column, group_column, strain_column)
                 
-                if plot_results is not None:
-                    strain_figs, combined_fig = plot_results
-                    
+                if group_plot_results is not None:
+                    strain_figs, combined_fig = group_plot_results
                     if strain_figs:
                         for fig in strain_figs:
                             st.pyplot(fig)
                         if combined_fig is not None:
                             st.pyplot(combined_fig)
+                
+                # 2. Birthdate Summary and Plot (if strain column exists)
+                if strain_column:
+                    st.write("### Group Summary by " + strain_column)
+                    birthdate_summary = st.session_state.output_df.groupby([strain_column, 'Allocated_Group']).agg({
+                        value_column: ['count', 'mean', 'std']
+                    }).round(2)
+                    st.write(birthdate_summary)
+                    
+                    st.write("### " + strain_column + " Distribution by Group")
+                    # Create a birthdate-specific plot
+                    birthdate_plot_fig = create_birthdate_plot(st.session_state.output_df, value_column, strain_column)
+                    if birthdate_plot_fig:
+                        st.pyplot(birthdate_plot_fig)
                 
                 # Create a separate container for the download button
                 download_container = st.container()
