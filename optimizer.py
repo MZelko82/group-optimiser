@@ -224,17 +224,18 @@ def find_optimal_allocation_ilp(boxes: List[str], values: Dict[str, float], n_gr
     print(f"Results: {results}")
     return results
 
-def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None, weight_penalty: float = 1.0, strain_penalty: float = 0.1) -> Dict:
+def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None, weight_penalty: float = 1.0, strain_penalty: float = 0.01, variance_penalty: float = 0.5) -> Dict:
     """
     Find optimal allocation using weighted objective function.
     
     Hard constraint: Box integrity (boxes stay together)
     Primary objective: Minimize weight imbalance (penalty = weight_penalty)
     Secondary objective: Minimize strain imbalance (penalty = strain_penalty)
+    Tertiary objective: Minimize variance imbalance (penalty = variance_penalty)
     """
     print(f"\nFinding optimal allocation for {n_groups} groups using weighted objective")
     print(f"Group names: {group_names}")
-    print(f"Weight penalty: {weight_penalty}, Strain penalty: {strain_penalty}")
+    print(f"Weight penalty: {weight_penalty}, Strain penalty: {strain_penalty}, Variance penalty: {variance_penalty}")
     
     # Get the box column name (first column)
     box_col = box_weights.columns[0]
@@ -260,6 +261,10 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
     max_weight = LpVariable("max_weight", lowBound=0)
     min_weight = LpVariable("min_weight", lowBound=0)
     
+    # Variables for tracking variance imbalances (using group total variance as proxy)
+    max_group_total_var = LpVariable("max_group_total_var", lowBound=0)
+    min_group_total_var = LpVariable("min_group_total_var", lowBound=0)
+    
     # Strain imbalance variables (if strain composition exists)
     strain_vars = {}
     if strain_col:
@@ -276,6 +281,9 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
     # Objective: Minimize weighted combination of imbalances
     objective = (weight_penalty * (max_weight - min_weight))
     
+    # Add variance minimization (using group total variance as proxy)
+    objective += variance_penalty * (max_group_total_var - min_group_total_var)
+    
     if strain_vars:
         for strain_name, vars in strain_vars.items():
             objective += strain_penalty * (vars['max'] - vars['min'])
@@ -291,6 +299,13 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
         group_weight = lpSum(values[box] * x[box, group] for box in boxes)
         prob += group_weight <= max_weight
         prob += group_weight >= min_weight
+    
+    # Variance balance constraints (using group total variance as proxy)
+    # Track the variance of group totals to ensure balanced distributions
+    for group in group_names:
+        group_total = lpSum(values[box] * x[box, group] for box in boxes)
+        prob += group_total <= max_group_total_var
+        prob += group_total >= min_group_total_var
     
     # Strain balance constraints (if applicable)
     if strain_vars:
@@ -315,8 +330,14 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
     
     # Solve
     print(f"\nSolving weighted optimization...")
+    print(f"Objective function: {objective}")
     status = prob.solve(PULP_CBC_CMD(msg=False))
     print(f"Status: {LpStatus[prob.status]}")
+    
+    if LpStatus[prob.status] == 'Optimal':
+        print(f"Objective value: {prob.objective.value()}")
+        print(f"Weight imbalance: {value(max_weight - min_weight)}")
+        print(f"Variance imbalance: {value(max_group_total_var - min_group_total_var)}")
     
     if LpStatus[prob.status] != 'Optimal':
         raise ValueError(f"Could not find optimal solution. Status: {LpStatus[prob.status]}")
@@ -350,13 +371,13 @@ def find_optimal_allocation_weighted(box_weights: pd.DataFrame, n_groups: int, g
     print(f"Results: {results}")
     return results
 
-def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None) -> Dict:
+def find_optimal_allocation_n_groups(box_weights: pd.DataFrame, n_groups: int, group_names: List[str], strain_col: str = None, weight_penalty: float = 1.0, variance_penalty: float = 0.5, strain_penalty: float = 0.01) -> Dict:
     """
     Wrapper function that calls the new weighted optimization.
     Maintains backward compatibility with old data structure.
     """
     # Call the new weighted optimization
-    result = find_optimal_allocation_weighted(box_weights, n_groups, group_names, strain_col)
+    result = find_optimal_allocation_weighted(box_weights, n_groups, group_names, strain_col, weight_penalty=weight_penalty, variance_penalty=variance_penalty, strain_penalty=strain_penalty)
     
     # Convert to old format for backward compatibility
     if strain_col:

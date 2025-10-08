@@ -51,3 +51,6 @@ test_streamlit_workflow.py
 test_weighted_optimization.py
 
 testing/
+Anxious B_W3_v1.csv
+optimizer_fixed_v2.py
+optimizer_fixed.py

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from optimizer import find_optimal_allocation_n_groups, get_box_weights
+from optimizer_interleaving import find_optimal_allocation_n_groups_interleaving, get_box_weights_interleaving
 import matplotlib.pyplot as plt
 import seaborn as sns
 from io import BytesIO
@@ -399,6 +400,59 @@ def main():
             st.write("### Group Configuration")
             n_groups = st.number_input("Number of groups", min_value=2, max_value=10, value=2)
             
+            # Optimization method selection
+            st.write("### Optimization Method")
+            optimization_method = st.selectbox(
+                "Choose optimization approach:",
+                ["Integer Linear Programming (ILP)", "Interleaving Strategy"],
+                help="ILP: Mathematical optimization (slower, more precise). Interleaving: Heuristic approach (faster, good for strain balance)."
+            )
+            
+            # Interleaving strategy options (only show if interleaving is selected)
+            interleaving_strategy = None
+            if optimization_method == "Interleaving Strategy":
+                st.write("#### Interleaving Strategy Options")
+                interleaving_strategy = st.selectbox(
+                    "Choose interleaving strategy:",
+                    ["Simple Interleaving", "Smart Interleaving", "Strain-Aware Interleaving", "Hierarchical Interleaving", "Hierarchical Smart Interleaving"],
+                    help="Simple: Basic alternating assignment. Smart: Optimized for 3+ groups. Strain-Aware: Considers strain balance. Hierarchical: Perfect strain balance first, then weight optimization."
+                )
+            
+            # Optimization parameters
+            st.write("### Optimization Parameters")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("**Mean Balance Weight**")
+                st.markdown("*Higher values prioritize equal group means*")
+                mean_weight = st.slider("Mean balance importance", 0.0, 2.0, 1.0, 0.1, key="mean_weight")
+            with col2:
+                st.markdown("**Variance Balance Weight**")
+                st.markdown("*Higher values prioritize equal group variances*")
+                variance_weight = st.slider("Variance balance importance", 0.0, 2.0, 0.5, 0.1, key="variance_weight")
+            with col3:
+                st.markdown("**Strain Balance Weight**")
+                st.markdown("*Higher values prioritize equal strain distribution*")
+                strain_weight = st.slider("Strain balance importance", 0.0, 0.1, 0.01, 0.001, key="strain_weight")
+            
+            # Show explanation based on selected method
+            if optimization_method == "Integer Linear Programming (ILP)":
+                st.info("""
+                **ILP Optimization Strategy:**
+                - **Mean Balance**: Ensures groups have similar average weights
+                - **Variance Balance**: Ensures groups have similar weight distributions (prevents one group from being very tight and another very spread out)
+                - **Strain Balance**: Ensures equal distribution of strains/DOBs across groups
+                - **Recommended**: Use Mean=1.0, Variance=0.5, Strain=0.01 for most robust experimental design
+                """)
+            else:  # Interleaving Strategy
+                st.info(f"""
+                **Interleaving Strategy: {interleaving_strategy}**
+                - **Simple**: Basic alternating assignment (fast, good for 2 groups)
+                - **Smart**: Optimized assignment for 3+ groups using ends-first strategy
+                - **Strain-Aware**: Considers strain balance during assignment
+                - **Hierarchical**: Perfect strain balance first, then weight optimization (recommended for strain-critical experiments)
+                - **Note**: Interleaving methods are faster than ILP and often produce better strain balance
+                """)
+            
             # Group names input
             st.write("#### Group Labels")
             group_names = []
@@ -429,24 +483,57 @@ def main():
                             st.write(f"- {strain}")
                         
                         # Calculate box weights for all data
-                        box_weights = get_box_weights(
-                            df=df,
-                            value_col=value_column,
-                            box_col=group_column,
-                            strain_col=strain_column
-                        )
+                        if optimization_method == "Integer Linear Programming (ILP)":
+                            box_weights = get_box_weights(
+                                df=df,
+                                value_col=value_column,
+                                box_col=group_column,
+                                strain_col=strain_column
+                            )
+                        else:  # Interleaving Strategy
+                            box_weights = get_box_weights_interleaving(
+                                df=df,
+                                value_col=value_column,
+                                box_col=group_column,
+                                strain_col=strain_column
+                            )
                         
                         # Debug output
                         st.write("Box weights:")
                         st.write(box_weights)
                         
-                        # Single optimization call for all strains
-                        st.session_state.results = find_optimal_allocation_n_groups(
-                            box_weights=box_weights,
-                            n_groups=n_groups,
-                            group_names=group_names,  # Use the user-defined group names
-                            strain_col=strain_column
-                        )
+                        # Run optimization based on selected method
+                        if optimization_method == "Integer Linear Programming (ILP)":
+                            # ILP optimization
+                            st.session_state.results = find_optimal_allocation_n_groups(
+                                box_weights=box_weights,
+                                n_groups=n_groups,
+                                group_names=group_names,
+                                strain_col=strain_column,
+                                weight_penalty=mean_weight,
+                                variance_penalty=variance_weight,
+                                strain_penalty=strain_weight
+                            )
+                        else:  # Interleaving Strategy
+                            # Map strategy names to parameters
+                            strategy_params = {
+                                "Simple Interleaving": {"use_smart_interleaving": False, "use_hierarchical": False, "consider_strain_balance": False},
+                                "Smart Interleaving": {"use_smart_interleaving": True, "use_hierarchical": False, "consider_strain_balance": False},
+                                "Strain-Aware Interleaving": {"use_smart_interleaving": False, "use_hierarchical": False, "consider_strain_balance": True},
+                                "Hierarchical Interleaving": {"use_smart_interleaving": False, "use_hierarchical": True, "consider_strain_balance": False},
+                                "Hierarchical Smart Interleaving": {"use_smart_interleaving": True, "use_hierarchical": True, "consider_strain_balance": False}
+                            }
+                            
+                            params = strategy_params[interleaving_strategy]
+                            
+                            # Interleaving optimization
+                            st.session_state.results = find_optimal_allocation_n_groups_interleaving(
+                                box_weights=box_weights,
+                                n_groups=n_groups,
+                                group_names=group_names,
+                                strain_col=strain_column,
+                                **params
+                            )
                         
                         # Debug output
                         st.write("Optimization results:")

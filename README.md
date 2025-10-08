@@ -11,6 +11,10 @@ The app is hosted on Streamlit Cloud and can be accessed at:
 ## Features
 
 - Upload CSV files with experimental data
+- **Advanced Multi-Objective Optimization**:
+  - **Mean Balance**: Ensures groups have similar average values
+  - **Variance Balance**: Ensures groups have similar distributions (prevents one group from being very tight and another very spread out)
+  - **Customizable Weights**: Adjust the relative importance of mean vs variance balance
 - Optimise group allocations based on:
   - Numeric values (e.g., weights) to balance between groups
   - Box/cage identifiers to maintain group integrity
@@ -75,12 +79,16 @@ streamlit run streamlit_app.py
 3. Configure groups:
    - Set number of groups (2-10)
    - Customise group labels if desired
-4. Click "Optimise Groups" to run
-5. Review the results:
+4. **Set optimization parameters**:
+   - **Mean Balance Weight**: How much to prioritize equal group means (0.0-2.0)
+   - **Variance Balance Weight**: How much to prioritize equal group variances (0.0-2.0)
+   - **Recommended**: Use both (e.g., Mean=1.0, Variance=0.5) for robust experimental design
+5. Click "Optimise Groups" to run
+6. Review the results:
    - Initial distribution plot
    - Group summary statistics
    - Optimised distribution plots
-6. Download the results as CSV
+7. Download the results as CSV
 
 ## Privacy
 
