@@ -9,7 +9,7 @@ from io import BytesIO
 from scipy.stats import gaussian_kde
 
 # Set page config first
-st.set_page_config(page_title="Group Optimizer", layout="wide")
+st.set_page_config(page_title="Group Optimiser", layout="wide")
 
 # Configure seaborn defaults
 sns.set_theme(style="whitegrid")
@@ -330,7 +330,7 @@ def create_birthdate_plot(df, value_column, strain_column):
     return fig
 
 def main():
-    st.title("Group Allocation Optimizer")
+    st.title("Group Allocation Optimiser")
     
     # Initialize session state variables
     if 'optimization_run' not in st.session_state:
@@ -380,10 +380,10 @@ def main():
             columns = list(df.columns)
             
             # Create three columns for the dropdowns
-            st.markdown("### Select Columns for Optimization")
+            st.markdown("### Select Columns for Optimisation")
             
-            # Column to optimize
-            st.markdown("##### Which column should be optimized for even distribution?")
+            # Column to optimise
+            st.markdown("##### Which column should be optimised for even distribution?")
             value_column = st.selectbox("", df.select_dtypes(include=[np.number]).columns.tolist(), key='optimize')
             
             # Column for keeping subjects together
@@ -407,13 +407,32 @@ def main():
             st.write("### Group Configuration")
             n_groups = st.number_input("Number of groups", min_value=2, max_value=10, value=2)
             
-            # Optimization method selection
-            st.write("### Optimization Method")
+            # Optimisation method selection
+            st.write("### Optimisation Method")
             optimization_method = st.selectbox(
-                "Choose optimization approach:",
+                "Choose optimisation approach:",
                 ["Integer Linear Programming (ILP)", "Interleaving Strategy"],
-                help="ILP: Mathematical optimization (slower, more precise). Interleaving: Heuristic approach (faster, good for strain balance)."
+                help="ILP: Mathematical optimisation (slower, more precise). Interleaving: Heuristic approach (faster, good for strain balance)."
             )
+            
+            # Show explanation based on selected method
+            if optimization_method == "Integer Linear Programming (ILP)":
+                st.info("""
+                **ILP Optimisation Strategy:**
+                - **Mean Balance**: Ensures groups have similar average weights
+                - **Variance Balance**: Ensures groups have similar weight distributions (prevents one group from being very tight and another very spread out)
+                - **Strain Balance**: Ensures equal distribution of strains/DOBs across groups
+                - **Recommended**: Use Mean=1.0, Variance=0.5, Strain=0.01 for most robust experimental design
+                """)
+            else:  # Interleaving Strategy
+                st.info(f"""
+                **Interleaving Strategy: {interleaving_strategy if 'interleaving_strategy' in locals() else 'Select strategy below'}**
+                - **Simple**: Basic alternating assignment (fast, good for 2 groups)
+                - **Smart**: Optimised assignment for 3+ groups using ends-first strategy
+                - **Strain-Aware**: Considers strain balance during assignment
+                - **Hierarchical**: Perfect strain balance first, then weight optimisation (recommended for strain-critical experiments)
+                - **Note**: Interleaving methods are faster than ILP and often produce better strain balance
+                """)
             
             # Interleaving strategy options (only show if interleaving is selected)
             interleaving_strategy = None
@@ -422,11 +441,11 @@ def main():
                 interleaving_strategy = st.selectbox(
                     "Choose interleaving strategy:",
                     ["Simple Interleaving", "Smart Interleaving", "Strain-Aware Interleaving", "Hierarchical Interleaving", "Hierarchical Smart Interleaving"],
-                    help="Simple: Basic alternating assignment. Smart: Optimized for 3+ groups. Strain-Aware: Considers strain balance. Hierarchical: Perfect strain balance first, then weight optimization."
+                    help="Simple: Basic alternating assignment. Smart: Optimised for 3+ groups. Strain-Aware: Considers strain balance. Hierarchical: Perfect strain balance first, then weight optimisation."
                 )
             
-            # Optimization parameters
-            st.write("### Optimization Parameters")
+            # Optimisation parameters
+            st.write("### Optimisation Parameters")
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.markdown("**Mean Balance Weight**")
@@ -440,25 +459,6 @@ def main():
                 st.markdown("**Strain Balance Weight**")
                 st.markdown("*Higher values prioritize equal strain distribution*")
                 strain_weight = st.slider("Strain balance importance", 0.0, 0.1, 0.01, 0.001, key="strain_weight")
-            
-            # Show explanation based on selected method
-            if optimization_method == "Integer Linear Programming (ILP)":
-                st.info("""
-                **ILP Optimization Strategy:**
-                - **Mean Balance**: Ensures groups have similar average weights
-                - **Variance Balance**: Ensures groups have similar weight distributions (prevents one group from being very tight and another very spread out)
-                - **Strain Balance**: Ensures equal distribution of strains/DOBs across groups
-                - **Recommended**: Use Mean=1.0, Variance=0.5, Strain=0.01 for most robust experimental design
-                """)
-            else:  # Interleaving Strategy
-                st.info(f"""
-                **Interleaving Strategy: {interleaving_strategy}**
-                - **Simple**: Basic alternating assignment (fast, good for 2 groups)
-                - **Smart**: Optimized assignment for 3+ groups using ends-first strategy
-                - **Strain-Aware**: Considers strain balance during assignment
-                - **Hierarchical**: Perfect strain balance first, then weight optimization (recommended for strain-critical experiments)
-                - **Note**: Interleaving methods are faster than ILP and often produce better strain balance
-                """)
             
             # Group names input
             st.write("#### Group Labels")
@@ -475,13 +475,13 @@ def main():
                 st.error("Please ensure all group names are unique!")
                 st.stop()
             
-            # Run optimization
-            if st.button("Optimize Groups"):
+            # Run optimisation
+            if st.button("Optimise Groups"):
                 try:
-                    # Running optimization section
-                    with st.expander("Running Optimization", expanded=False):
-                        st.write("The optimizer is running to find the best allocation that minimizes weight differences between groups.")
-                        st.write("\nOptimizing for the following strains:")
+                    # Running optimisation section
+                    with st.expander("Running Optimisation", expanded=False):
+                        st.write("The optimiser is running to find the best allocation that minimises weight differences between groups.")
+                        st.write("\nOptimising for the following strains:")
                         if strain_column:
                             strains = df[strain_column].unique()
                         else:
@@ -509,9 +509,9 @@ def main():
                         st.write("Box weights:")
                         st.write(box_weights)
                         
-                        # Run optimization based on selected method
+                        # Run optimisation based on selected method
                         if optimization_method == "Integer Linear Programming (ILP)":
-                            # ILP optimization
+                            # ILP optimisation
                             st.session_state.results = find_optimal_allocation_n_groups(
                                 box_weights=box_weights,
                                 n_groups=n_groups,
@@ -533,7 +533,7 @@ def main():
                             
                             params = strategy_params[interleaving_strategy]
                             
-                            # Interleaving optimization
+                            # Interleaving optimisation
                             st.session_state.results = find_optimal_allocation_n_groups_interleaving(
                                 box_weights=box_weights,
                                 n_groups=n_groups,
@@ -543,7 +543,7 @@ def main():
                             )
                         
                         # Debug output
-                        st.write("Optimization results:")
+                        st.write("Optimisation results:")
                         st.write(st.session_state.results)
                         
                         # Create output DataFrame
@@ -611,16 +611,16 @@ def main():
                         st.session_state.optimization_run = True
                 
                 except Exception as e:
-                    st.error(f"Error during optimization: {str(e)}")
+                    st.error(f"Error during optimisation: {str(e)}")
             
-            # Display results if optimization was successful
+            # Display results if optimisation was successful
             if st.session_state.optimization_run:
                 # Show initial distribution
                 st.write("### Initial Distribution")
                 initial_fig = plot_initial_distribution(df, value_column, strain_column)
                 st.pyplot(initial_fig)
                 
-                # Check if we're using the new weighted optimization
+                # Check if we're using the new weighted optimisation
                 is_weighted_optimization = strain_column and 'Combined' in st.session_state.results.keys()
                 
                 # 1. Group Summary and Plot
