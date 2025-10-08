@@ -73,8 +73,11 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
             # For weighted optimization, use all data (no strain filtering)
             strain_data = df
         else:
-            # For old optimization, filter by strain
-            strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
+            # For old optimization, filter by strain (handle None values)
+            if strain_column:
+                strain_mask = (df[strain_column] == strain) & (df[strain_column].notna())
+            else:
+                strain_mask = pd.Series(True, index=df.index)
             strain_data = df[strain_mask]
         
         # Prepare data for plotting
@@ -143,7 +146,11 @@ def plot_group_distributions(df, results, value_column, group_column, strain_col
             if strain in ['Combined', 'Group']:
                 strain_data = df  # Use all data for weighted optimization
             else:
-                strain_data = df[df[strain_column] == strain] if strain_column else df
+                # Handle None values in strain column
+                if strain_column:
+                    strain_data = df[(df[strain_column] == strain) & (df[strain_column].notna())]
+                else:
+                    strain_data = df
             strain_color_offset = strain_idx * 2
             
             for group_idx, group_name in enumerate(reversed(list(results[strain]['groups'].keys()))):
@@ -211,7 +218,7 @@ def plot_initial_distribution(df, value_column, strain_column=None):
     
     # Add strain-specific data if strain column is provided
     if strain_column is not None:
-        for i, strain in enumerate(sorted(df[strain_column].unique())):
+        for i, strain in enumerate(sorted([s for s in df[strain_column].unique() if s is not None])):
             strain_data = df[df[strain_column] == strain][value_column]
             plot_data.append({
                 'label': strain,
@@ -264,9 +271,9 @@ def create_birthdate_plot(df, value_column, strain_column):
     fig, ax = plt.subplots(figsize=(12, 6), facecolor='none')
     ax.set_facecolor('none')
     
-    # Get unique birthdates and groups
-    birthdates = sorted(df[strain_column].unique())
-    groups = sorted(df['Allocated_Group'].unique())
+    # Get unique birthdates and groups (filter out None values)
+    birthdates = sorted([bd for bd in df[strain_column].unique() if bd is not None])
+    groups = sorted([g for g in df['Allocated_Group'].unique() if g is not None])
     
     # Create position mapping
     x_positions = []
@@ -558,12 +565,12 @@ def main():
                                 st.write(f"Assigning group {group} with boxes {boxes}")
                                 box_strings = [str(b) for b in boxes]
                                 
-                                # Handle the new weighted optimization structure
+                                # Handle different optimization structures
                                 if strain in ['Combined', 'Group']:
-                                    # For weighted optimization, don't filter by strain
+                                    # For interleaving or weighted optimization, don't filter by strain
                                     strain_mask = pd.Series(True, index=df.index)
                                 else:
-                                    # For old optimization, filter by strain
+                                    # For old ILP optimization, filter by strain
                                     strain_mask = df[strain_column] == strain if strain_column else pd.Series(True, index=df.index)
                                 
                                 mask = strain_mask & df[group_column].astype(str).isin(box_strings)
@@ -583,6 +590,15 @@ def main():
                         assigned_animals = st.session_state.output_df['Allocated_Group'].notna().sum()
                         total_animals = len(st.session_state.output_df)
                         st.write(f"Final assignment: {assigned_animals}/{total_animals} animals assigned to groups")
+                        
+                        # Check for None values in Allocated_Group
+                        none_count = st.session_state.output_df['Allocated_Group'].isna().sum()
+                        if none_count > 0:
+                            st.warning(f"Warning: {none_count} animals have None in Allocated_Group column")
+                            # Show which animals are unassigned
+                            unassigned_animals = st.session_state.output_df[st.session_state.output_df['Allocated_Group'].isna()]
+                            st.write("Unassigned animals:")
+                            st.write(unassigned_animals[[group_column, strain_column] if strain_column else [group_column]])
                         
                         # Show sample of assignments
                         # Use the actual column names from user selections
